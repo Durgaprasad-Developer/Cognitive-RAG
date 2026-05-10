@@ -186,8 +186,9 @@ export default function NotebookLM() {
   const [isBrainOnline, setIsBrainOnline] = useState(false);
   useEffect(() => {
     const checkBrain = async () => {
+      const url = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || "http://localhost:8000";
       try {
-        const res = await fetch("http://localhost:8000/health", { signal: AbortSignal.timeout(2000) });
+        const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
         setIsBrainOnline(res.ok);
       } catch (e) {
         setIsBrainOnline(false);

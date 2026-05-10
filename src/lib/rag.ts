@@ -36,7 +36,8 @@ export async function processFile(file: Blob, fileName: string, sessionId: strin
     
     // Index in BM25 (Python Service) - Safe call
     try {
-      await fetch("http://localhost:8000/index", {
+      const url = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || "http://localhost:8000";
+      await fetch(`${url}/index`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ documents: splits.map(s => s.pageContent) }),
@@ -58,7 +59,8 @@ export async function askQuestion(query: string, sessionId: string) {
   // 1. Safe RL Agent Strategy Selection
   let strategy = "Vector (Safety Fallback)";
   try {
-    const agentRes = await fetch("http://localhost:8000/agent/decide", {
+    const url = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || "http://localhost:8000";
+    const agentRes = await fetch(`${url}/agent/decide`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query }),

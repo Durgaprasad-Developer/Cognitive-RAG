@@ -3,7 +3,7 @@ import { QdrantVectorStore } from "@langchain/qdrant";
 export class HybridRetriever {
   constructor(
     private vectorStore: QdrantVectorStore,
-    private pythonServiceUrl: string = "http://localhost:8000"
+    private pythonServiceUrl: string = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || "http://localhost:8000"
   ) {}
 
   async search(query: string, sessionId: string, topK: number = 10) {
