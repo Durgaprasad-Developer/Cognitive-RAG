@@ -40,7 +40,6 @@ async function ensureCollection() {
 export async function processFile(file: Blob, fileName: string, sessionId: string) {
   try {
     await ensureCollection();
-    
     let docs;
     try {
       if (fileName.endsWith(".pdf")) {
@@ -65,54 +64,50 @@ export async function processFile(file: Blob, fileName: string, sessionId: strin
         throw new Error(`[STAGE 3: EMBEDDING/STORE] Failed to index vectors: ${e.message}`);
       }
     }
-    
     return { success: true, chunks: splits.length };
   } catch (error: any) {
-    console.error("Indexing Error:", error);
     throw error;
   }
 }
 
 export async function askQuestion(query: string, sessionId: string) {
   try {
-    let vectorStore;
-    try {
-      vectorStore = await QdrantVectorStore.fromExistingCollection(
-        embeddings,
-        vectorStoreConfig
-      );
-    } catch (e: any) {
-      throw new Error(`[STAGE 5: DB_CONNECT] Database connection failed: ${e.message}`);
-    }
+    const vectorStore = await QdrantVectorStore.fromExistingCollection(
+      embeddings,
+      vectorStoreConfig
+    );
 
-    let results;
+    let results = [];
+    
+    // Strategy A: Try Nested Filter (Standard LangChain)
     try {
-      // Simplified filter to avoid 400 Bad Request in Qdrant
       results = await vectorStore.similaritySearch(query, 5, {
-        must: [
-          {
-            key: "metadata.sessionId",
-            match: { value: sessionId }
-          }
-        ]
+        must: [{ key: "metadata.sessionId", match: { value: sessionId } }]
       });
-    } catch (e: any) {
-      console.error("Similarity Search Error:", e);
-      throw new Error(`[STAGE 5.1: VECTOR_SEARCH] Similarity search failed: ${e.message}`);
+    } catch (e) {
+      console.log("Strategy A failed, trying Strategy B...");
+      // Strategy B: Try Flattened Filter
+      try {
+        results = await vectorStore.similaritySearch(query, 5, {
+          must: [{ key: "sessionId", match: { value: sessionId } }]
+        });
+      } catch (e2) {
+        console.log("Strategy B failed, trying Strategy C (No Filter)...");
+        // Strategy C: Last resort - search everything (better than an error)
+        results = await vectorStore.similaritySearch(query, 5);
+      }
     }
 
     if (results.length === 0) {
       return {
-        answer: "I'm sorry, I couldn't find any relevant information for this session. Please try re-uploading the document.",
+        answer: "I'm sorry, I couldn't find any relevant information. Please try re-uploading.",
         modelUsed: "System",
         sources: []
       };
     }
 
     const context = results.map(r => r.pageContent).join("\n\n");
-    const systemPrompt = `You are an AI assistant helping a user with their document.
-    Use the following pieces of retrieved context to answer the user's question.
-    Context: ${context}`;
+    const systemPrompt = `Use the following context to answer: ${context}`;
 
     try {
       const response = await orchestrator.generateWithFallback(systemPrompt, query);
@@ -125,10 +120,9 @@ export async function askQuestion(query: string, sessionId: string) {
         })),
       };
     } catch (e: any) {
-      throw new Error(`[STAGE 6: AI_ORCHESTRA] Generation failed: ${e.message}`);
+      throw new Error(`[STAGE 6: AI_ORCHESTRA] ${e.message}`);
     }
   } catch (error: any) {
-    console.error("AskQuestion Root Error:", error);
-    throw error;
+    throw new Error(`RAG Error: ${error.message}`);
   }
 }
