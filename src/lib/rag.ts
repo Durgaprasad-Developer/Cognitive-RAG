@@ -30,8 +30,11 @@ async function clearCollection(size: number) {
   }
 
   try {
+    // Force delete and wait a bit
     await fetch(url, { method: "DELETE", headers });
-    await fetch(url, {
+    
+    // Recreate with EXACT size of the current embedding model
+    const response = await fetch(url, {
       method: "PUT",
       headers,
       body: JSON.stringify({
@@ -41,14 +44,19 @@ async function clearCollection(size: number) {
         },
       }),
     });
+    
+    const result = await response.json();
+    console.log("Qdrant Recreate Result:", JSON.stringify(result));
   } catch (e) {
     console.error("Error clearing collection:", e);
   }
 }
 
 export async function processFile(file: Blob, fileName: string) {
+  // Get dimension from a test embedding to be 100% sure
   const testEmbed = await embeddings.embedQuery("test");
   const dim = testEmbed.length;
+  console.log("Embedding Dimension Detected:", dim);
   
   await clearCollection(dim);
 
