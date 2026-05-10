@@ -74,8 +74,12 @@ export default function NotebookLM() {
     formData.append("sessionId", sessionId);
 
     try {
-      setTimeout(() => setStatusMessage("Generating embeddings..."), 1000);
-      setTimeout(() => setStatusMessage("Indexing in Qdrant Cloud..."), 2500);
+      setTimeout(() => {
+        if (isUploading) setStatusMessage("Generating embeddings...");
+      }, 1000);
+      setTimeout(() => {
+        if (isUploading) setStatusMessage("Indexing in Qdrant Cloud...");
+      }, 3000);
 
       const res = await fetch("/api/upload", {
         method: "POST",
@@ -93,7 +97,7 @@ export default function NotebookLM() {
         setActiveSessionId(sessionId);
       } else {
         const err = await res.json();
-        alert(`Upload failed: ${err.error}`);
+        alert(`Upload failed: ${err.error || "Timeout occurred. Try a smaller file."}`);
       }
     } catch (error) {
       console.error(error);
@@ -106,7 +110,7 @@ export default function NotebookLM() {
 
   const handleAsk = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim() || isAsking || !activeSessionId) return;
+    if (!query.trim() || isAsking || isUploading || !activeSessionId) return;
 
     const userQuery = query;
     setQuery("");
@@ -123,11 +127,12 @@ export default function NotebookLM() {
     setStatusMessage("Searching documents...");
 
     try {
-      // Simulate real-time orchestration feedback
-      setTimeout(() => setStatusMessage("Consulting Gemini..."), 1000);
+      setTimeout(() => {
+        if (isAsking) setStatusMessage("Consulting Gemini...");
+      }, 1000);
       setTimeout(() => {
         if (isAsking) setStatusMessage("Processing through Orchestra...");
-      }, 4000);
+      }, 5000);
 
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -191,14 +196,14 @@ export default function NotebookLM() {
         <h1 style={{ fontSize: "1.5rem", marginBottom: "1rem", fontWeight: 700 }}>Cognitive RAG</h1>
         
         <div style={{ marginBottom: "2rem" }}>
-          <label className={`button primary-btn ${isUploading ? 'disabled' : ''}`} style={{ display: "block", textAlign: "center" }}>
+          <label className={`button primary-btn ${isUploading || isAsking ? 'disabled' : ''}`} style={{ display: "block", textAlign: "center" }}>
             {isUploading ? "Indexing..." : "Upload New Document"}
             <input
               type="file"
               accept=".pdf,.txt"
               style={{ display: "none" }}
               onChange={handleFileUpload}
-              disabled={isUploading}
+              disabled={isUploading || isAsking}
             />
           </label>
         </div>
@@ -209,7 +214,7 @@ export default function NotebookLM() {
             {sessions.map((s) => (
               <div 
                 key={s.id} 
-                className={`session-item glass ${activeSessionId === s.id ? "active-session" : ""}`}
+                className={`session-item glass ${activeSessionId === s.id ? "active-session" : ""} ${isUploading || isAsking ? 'disabled' : ''}`}
                 onClick={() => !isAsking && !isUploading && setActiveSessionId(s.id)}
               >
                 <div className="session-info">
@@ -274,23 +279,25 @@ export default function NotebookLM() {
           <div ref={chatEndRef} />
         </div>
 
-        <div className={`input-container glass shadow-lg ${isAsking ? 'input-blocked' : ''}`}>
+        <div className={`input-container glass shadow-lg ${isAsking || isUploading ? 'input-blocked' : ''}`}>
           <form onSubmit={handleAsk} style={{ display: "flex", gap: "1rem" }}>
             <input
               className="input"
               placeholder={
-                isAsking 
-                ? "Agent is thinking..." 
-                : activeSessionId 
-                  ? "Ask anything about the document..." 
-                  : "Select or upload a document"
+                isUploading 
+                ? "Indexing document... please wait" 
+                : isAsking 
+                  ? "Agent is thinking..." 
+                  : activeSessionId 
+                    ? "Ask anything about the document..." 
+                    : "Select or upload a document"
               }
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              disabled={!activeSessionId || isAsking}
+              disabled={!activeSessionId || isAsking || isUploading}
             />
-            <button className="button send-btn" type="submit" disabled={!activeSessionId || isAsking || !query.trim()}>
-              {isAsking ? "..." : "Send"}
+            <button className="button send-btn" type="submit" disabled={!activeSessionId || isAsking || isUploading || !query.trim()}>
+              {isAsking || isUploading ? "..." : "Send"}
             </button>
           </form>
         </div>
