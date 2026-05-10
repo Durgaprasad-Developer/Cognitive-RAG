@@ -159,7 +159,9 @@ export default function NotebookLM() {
           {messages.map((m, i) => (
             <div key={i} className={`message-wrapper ${m.role === "user" ? "user-wrapper" : "ai-wrapper"}`}>
               <div className={`message ${m.role === "user" ? "user-message" : "ai-message"} shadow-sm`}>
-                <ReactMarkdown className="prose">{m.content}</ReactMarkdown>
+                <div className="prose">
+                  <ReactMarkdown>{m.content}</ReactMarkdown>
+                </div>
               </div>
             </div>
           ))}
