@@ -184,6 +184,8 @@ export default function NotebookLM() {
   };
 
   const [isBrainOnline, setIsBrainOnline] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
+
   useEffect(() => {
     const checkBrain = async () => {
       const url = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || "http://localhost:8000";
@@ -202,9 +204,14 @@ export default function NotebookLM() {
   const deleteSession = (id: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (confirm("Delete this chat and all indexed context?")) {
-      setSessions((prev) => prev.filter((s) => s.id !== id));
-      if (activeSessionId === id) setActiveSessionId(null);
+    setShowDeleteModal(id);
+  };
+
+  const confirmDelete = () => {
+    if (showDeleteModal) {
+      setSessions((prev) => prev.filter((s) => s.id !== showDeleteModal));
+      if (activeSessionId === showDeleteModal) setActiveSessionId(null);
+      setShowDeleteModal(null);
     }
   };
 
@@ -286,9 +293,11 @@ export default function NotebookLM() {
                     <div className="prose">
                       <ReactMarkdown>{m.content}</ReactMarkdown>
                     </div>
-                    {m.modelUsed && (
-                      <div className="model-badge">
-                        <span>Answered by</span> {m.modelUsed}
+                    {m.role === "ai" && m.content.length > 0 && (
+                      <div className="msg-meta">
+                        <span className="strategy-badge">🧠 {m.strategyUsed || "Adaptive Retrieval"}</span>
+                        {m.grounded === false && <span className="warning-badge">⚠️ Potential Hallucination</span>}
+                        {m.modelUsed && <span className="model-badge">{m.modelUsed}</span>}
                       </div>
                     )}
                   </div>
@@ -322,6 +331,19 @@ export default function NotebookLM() {
           </form>
         </div>
       </main>
+
+      {showDeleteModal && (
+        <div className="modal-overlay" onClick={() => setShowDeleteModal(null)}>
+          <div className="modal-content glass" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Session?</h3>
+            <p>This will permanently remove this conversation and its indexed context.</p>
+            <div className="modal-actions">
+              <button className="cancel-btn" onClick={() => setShowDeleteModal(null)}>Cancel</button>
+              <button className="confirm-btn" onClick={confirmDelete}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
