@@ -188,12 +188,19 @@ body {
   font-size: 0.65rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-weight: 700;
+  font-weight: 500;
   color: var(--muted);
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
   opacity: 0.8;
   border-top: 1px solid var(--border);
-  padding-top: 0.4rem;
+  padding-top: 0.5rem;
+  display: flex;
+  gap: 0.3rem;
+}
+
+.model-badge span {
+  font-weight: 700;
+  color: var(--primary);
 }
 
 .status-message {
@@ -266,6 +273,13 @@ body {
 .input-container {
   border-radius: 1.5rem;
   padding: 0.75rem;
+  transition: all 0.3s ease;
+}
+
+.input-blocked {
+  opacity: 0.6;
+  background: var(--secondary);
+  pointer-events: none;
 }
 
 .input {
@@ -288,14 +302,15 @@ body {
   font-size: 0.9rem;
 }
 
+.button.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .primary-btn {
   background: var(--primary);
   color: white;
-}
-
-.primary-btn:hover {
-  background: var(--primary-hover);
-  transform: translateY(-1px);
 }
 
 .send-btn {

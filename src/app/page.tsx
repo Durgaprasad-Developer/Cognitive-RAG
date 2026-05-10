@@ -75,7 +75,7 @@ export default function NotebookLM() {
 
     try {
       setTimeout(() => setStatusMessage("Generating embeddings..."), 1000);
-      setTimeout(() => setStatusMessage("Indexing vectors in Cloud..."), 2500);
+      setTimeout(() => setStatusMessage("Indexing in Qdrant Cloud..."), 2500);
 
       const res = await fetch("/api/upload", {
         method: "POST",
@@ -123,9 +123,11 @@ export default function NotebookLM() {
     setStatusMessage("Searching documents...");
 
     try {
+      // Simulate real-time orchestration feedback
+      setTimeout(() => setStatusMessage("Consulting Gemini..."), 1000);
       setTimeout(() => {
-        if (isAsking) setStatusMessage("Thinking...");
-      }, 1500);
+        if (isAsking) setStatusMessage("Processing through Orchestra...");
+      }, 4000);
 
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -150,14 +152,10 @@ export default function NotebookLM() {
         );
       } else {
         const err = await res.json();
-        let errorMsg = `Error: ${err.error}`;
-        if (err.error?.includes("429") || err.error?.includes("quota")) {
-          errorMsg = "⚠️ **Rate Limit hit.** The orchestra is struggling. Please add a GROQ_API_KEY for seamless fallbacks or wait 60 seconds.";
-        }
         setSessions((prev) =>
           prev.map((s) =>
             s.id === activeSessionId
-              ? { ...s, messages: [...s.messages, { role: "ai", content: errorMsg }] }
+              ? { ...s, messages: [...s.messages, { role: "ai", content: `**Error:** ${err.error}` }] }
               : s
           )
         );
@@ -193,7 +191,7 @@ export default function NotebookLM() {
         <h1 style={{ fontSize: "1.5rem", marginBottom: "1rem", fontWeight: 700 }}>Cognitive RAG</h1>
         
         <div style={{ marginBottom: "2rem" }}>
-          <label className="button primary-btn" style={{ display: "block", textAlign: "center" }}>
+          <label className={`button primary-btn ${isUploading ? 'disabled' : ''}`} style={{ display: "block", textAlign: "center" }}>
             {isUploading ? "Indexing..." : "Upload New Document"}
             <input
               type="file"
@@ -212,7 +210,7 @@ export default function NotebookLM() {
               <div 
                 key={s.id} 
                 className={`session-item glass ${activeSessionId === s.id ? "active-session" : ""}`}
-                onClick={() => setActiveSessionId(s.id)}
+                onClick={() => !isAsking && !isUploading && setActiveSessionId(s.id)}
               >
                 <div className="session-info">
                   <div className="session-name">📄 {s.fileName}</div>
@@ -243,9 +241,9 @@ export default function NotebookLM() {
         <div className="chat-box glass">
           {!activeSessionId ? (
             <div className="welcome-screen">
-              <div className="logo-placeholder">🎻</div>
-              <h2>LLM Orchestra Active</h2>
-              <p>Upload a document to experience multi-model grounded intelligence.</p>
+              <div className="logo-placeholder">🧠</div>
+              <h2>Ready to investigate</h2>
+              <p>Upload a document to begin your discovery.</p>
             </div>
           ) : (
             <>
@@ -256,7 +254,9 @@ export default function NotebookLM() {
                       <ReactMarkdown>{m.content}</ReactMarkdown>
                     </div>
                     {m.modelUsed && (
-                      <div className="model-badge">{m.modelUsed}</div>
+                      <div className="model-badge">
+                        <span>Answered by</span> {m.modelUsed}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -274,17 +274,23 @@ export default function NotebookLM() {
           <div ref={chatEndRef} />
         </div>
 
-        <div className="input-container glass shadow-lg">
+        <div className={`input-container glass shadow-lg ${isAsking ? 'input-blocked' : ''}`}>
           <form onSubmit={handleAsk} style={{ display: "flex", gap: "1rem" }}>
             <input
               className="input"
-              placeholder={activeSessionId ? "Ask anything about the document..." : "Select or upload a document"}
+              placeholder={
+                isAsking 
+                ? "Agent is thinking..." 
+                : activeSessionId 
+                  ? "Ask anything about the document..." 
+                  : "Select or upload a document"
+              }
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               disabled={!activeSessionId || isAsking}
             />
             <button className="button send-btn" type="submit" disabled={!activeSessionId || isAsking || !query.trim()}>
-              {isAsking ? "Thinking..." : "Send"}
+              {isAsking ? "..." : "Send"}
             </button>
           </form>
         </div>
