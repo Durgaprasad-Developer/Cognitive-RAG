@@ -8,6 +8,7 @@ from intelligence.understanding import intel
 from retrieval.bm25 import searcher
 from cognition.metacognition import metacog
 from memory.memory_manager import manager
+from reasoning.reasoning_engine import reasoner
 from stable_baselines3 import PPO
 import numpy as np
 import os
@@ -29,6 +30,10 @@ class MetaRequest(BaseModel):
     query: str
     context: str
     answer: str
+
+class ReasonRequest(BaseModel):
+    query: str
+    contexts: List[str]
 
 class RerankRequest(BaseModel):
     query: str
@@ -112,6 +117,14 @@ async def store_memory(interaction: Dict[str, Any]):
     try:
         manager.store_episodic(interaction)
         return {"status": "stored"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/reason")
+async def reason_query(request: ReasonRequest):
+    try:
+        chain = await reasoner.reason(request.query, request.contexts)
+        return chain
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
