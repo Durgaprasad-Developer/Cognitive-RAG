@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 import "./globals.css";
 
 type Message = {
@@ -45,7 +46,7 @@ export default function NotebookLM() {
       if (res.ok) {
         setMessages((prev) => [
           ...prev,
-          { role: "ai", content: `File "${file.name}" indexed successfully! You can now ask questions.` },
+          { role: "ai", content: `File **${file.name}** indexed successfully! You can now ask questions.` },
         ]);
       } else {
         const err = await res.json();
@@ -102,12 +103,12 @@ export default function NotebookLM() {
   return (
     <div className="container">
       <div className="sidebar glass">
-        <h1 style={{ fontSize: "1.5rem", marginBottom: "1rem" }}>NotebookLM Clone</h1>
+        <h1 style={{ fontSize: "1.5rem", marginBottom: "1rem", fontWeight: 700 }}>Cognitive RAG</h1>
         <div style={{ marginBottom: "2rem" }}>
-          <p style={{ fontSize: "0.9rem", color: "var(--muted)", marginBottom: "1rem" }}>
-            Upload a document (PDF or TXT) to start a grounded conversation.
+          <p style={{ fontSize: "0.9rem", color: "var(--muted)", marginBottom: "1.5rem", lineHeight: 1.5 }}>
+            Unlock insights from your documents with grounded AI.
           </p>
-          <label className="button" style={{ display: "block", textAlign: "center" }}>
+          <label className="button primary-btn" style={{ display: "block", textAlign: "center" }}>
             {isUploading ? "Indexing..." : "Upload Document"}
             <input
               type="file"
@@ -118,22 +119,27 @@ export default function NotebookLM() {
             />
           </label>
           {fileName && (
-            <div className="source-badge" style={{ marginTop: "1rem", width: "100%", textAlign: "center" }}>
-              Active: {fileName}
+            <div className="source-badge active-file" style={{ marginTop: "1rem" }}>
+              📄 {fileName}
             </div>
           )}
         </div>
         
-        <div style={{ flex: 1 }}>
-          <h3 style={{ fontSize: "1rem", marginBottom: "0.5rem" }}>Sources</h3>
-          <p style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
-            Retrieved chunks will appear here after a query.
-          </p>
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <h3 style={{ fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)", marginBottom: "1rem" }}>
+            Sources
+          </h3>
+          {(!messages.length || !messages[messages.length - 1].sources) && (
+            <p style={{ fontSize: "0.8rem", color: "var(--muted)", fontStyle: "italic" }}>
+              Retrieved chunks will appear here.
+            </p>
+          )}
           {messages.length > 0 && messages[messages.length - 1].sources && (
-             <div style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+             <div className="sources-list">
                 {messages[messages.length - 1].sources?.map((s, i) => (
-                  <div key={i} className="source-badge" style={{ fontSize: "0.7rem", whiteSpace: "normal" }}>
-                    Chunk {i+1}: {s.content.substring(0, 100)}...
+                  <div key={i} className="source-card glass">
+                    <div className="source-index">Chunk {i+1}</div>
+                    <div className="source-snippet">{s.content}</div>
                   </div>
                 ))}
              </div>
@@ -144,31 +150,36 @@ export default function NotebookLM() {
       <main className="main-content">
         <div className="chat-box glass">
           {messages.length === 0 && (
-            <div style={{ textAlign: "center", marginTop: "20%", color: "var(--muted)" }}>
-              <h2 style={{ color: "var(--foreground)", marginBottom: "1rem" }}>Welcome to Cognitive RAG</h2>
-              <p>Your documents, intelligently indexed and ready to discuss.</p>
+            <div className="welcome-screen">
+              <div className="logo-placeholder">🧠</div>
+              <h2>Start your conversation</h2>
+              <p>Upload a PDF or Text file to begin asking questions grounded in your data.</p>
             </div>
           )}
           {messages.map((m, i) => (
-            <div key={i} className={`message ${m.role === "user" ? "user-message" : "ai-message"} fade-in`}>
-              {m.content}
+            <div key={i} className={`message-wrapper ${m.role === "user" ? "user-wrapper" : "ai-wrapper"}`}>
+              <div className={`message ${m.role === "user" ? "user-message" : "ai-message"} shadow-sm`}>
+                <ReactMarkdown className="prose">{m.content}</ReactMarkdown>
+              </div>
             </div>
           ))}
           <div ref={chatEndRef} />
         </div>
 
-        <form onSubmit={handleAsk} className="glass" style={{ padding: "1rem", display: "flex", gap: "1rem" }}>
-          <input
-            className="input"
-            placeholder={fileName ? "Ask anything about the document..." : "Upload a document first"}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            disabled={!fileName || isAsking}
-          />
-          <button className="button" type="submit" disabled={!fileName || isAsking || !query.trim()}>
-            {isAsking ? "Thinking..." : "Send"}
-          </button>
-        </form>
+        <div className="input-container glass shadow-lg">
+          <form onSubmit={handleAsk} style={{ display: "flex", gap: "1rem" }}>
+            <input
+              className="input"
+              placeholder={fileName ? "Ask anything about the document..." : "Upload a document first"}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              disabled={!fileName || isAsking}
+            />
+            <button className="button send-btn" type="submit" disabled={!fileName || isAsking || !query.trim()}>
+              {isAsking ? "Thinking..." : "Send"}
+            </button>
+          </form>
+        </div>
       </main>
     </div>
   );
