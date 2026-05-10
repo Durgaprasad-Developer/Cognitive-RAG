@@ -1,6 +1,7 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { QdrantVectorStore } from "@langchain/qdrant";
+// @ts-ignore
 import pdf from "pdf-extraction";
 
 const embeddings = new GoogleGenerativeAIEmbeddings({
@@ -16,7 +17,7 @@ const model = new ChatGoogleGenerativeAI({
 
 const vectorStoreConfig = {
   url: process.env.QDRANT_URL || "http://localhost:6333",
-  apiKey: process.env.QDRANT_API_KEY, // Added support for Cloud API Key
+  apiKey: process.env.QDRANT_API_KEY,
   collectionName: process.env.COLLECTION_NAME || "notebook_rag",
 };
 
@@ -24,7 +25,6 @@ async function clearCollection(size: number) {
   const url = `${vectorStoreConfig.url}/collections/${vectorStoreConfig.collectionName}`;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   
-  // Add API Key header if present (required for Qdrant Cloud)
   if (process.env.QDRANT_API_KEY) {
     headers["api-key"] = process.env.QDRANT_API_KEY;
   }
