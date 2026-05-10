@@ -1,7 +1,7 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { ChatGroq } from "@langchain/groq";
+import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { QdrantVectorStore } from "@langchain/qdrant";
+import { orchestrator } from "./llm/orchestrator";
 // @ts-ignore
 import pdf from "pdf-extraction";
 
@@ -9,22 +9,6 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
   model: "models/gemini-embedding-001",
   apiKey: process.env.GOOGLE_API_KEY,
 });
-
-// Primary Brain: Gemini
-const primaryModel = new ChatGoogleGenerativeAI({
-  model: "models/gemini-flash-latest",
-  apiKey: process.env.GOOGLE_API_KEY,
-  temperature: 0,
-});
-
-// Secondary Brain: Groq (Llama 3.3)
-const fallbackModel = process.env.GROQ_API_KEY 
-  ? new ChatGroq({
-      modelName: "llama-3.3-70b-versatile",
-      apiKey: process.env.GROQ_API_KEY,
-      temperature: 0,
-    })
-  : null;
 
 const vectorStoreConfig = {
   url: process.env.QDRANT_URL || "http://localhost:6333",
@@ -90,37 +74,12 @@ export async function askQuestion(query: string, sessionId: string) {
   Do NOT use your general knowledge.
   Context: ${context}`;
 
-  let answer;
-  let modelUsed = "Gemini 2.0 Flash";
-
-  try {
-    const response = await primaryModel.invoke([
-      ["system", systemPrompt],
-      ["human", query]
-    ]);
-    answer = response.content;
-  } catch (error: any) {
-    console.error("Primary model failed, attempting fallback...", error.message);
-    
-    if (fallbackModel && (error.message.includes("429") || error.message.includes("quota"))) {
-      try {
-        const response = await fallbackModel.invoke([
-          ["system", systemPrompt],
-          ["human", query]
-        ]);
-        answer = response.content;
-        modelUsed = "Groq (Llama 3.3)";
-      } catch (fallbackError: any) {
-        throw new Error(`Orchestra Failure: Both Primary and Fallback failed. Primary Error: ${error.message}`);
-      }
-    } else {
-      throw error;
-    }
-  }
+  // Orchestrated Generation with Fallbacks
+  const response = await orchestrator.generateWithFallback(systemPrompt, query);
 
   return {
-    answer,
-    modelUsed,
+    answer: response.content,
+    modelUsed: response.modelUsed,
     sources: results.map((doc: any) => ({
       content: doc.pageContent,
       metadata: doc.metadata,
