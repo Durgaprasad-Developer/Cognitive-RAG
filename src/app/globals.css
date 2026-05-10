@@ -50,12 +50,85 @@ body {
 }
 
 .sidebar {
-  width: 320px;
+  width: 350px;
   display: flex;
   flex-direction: column;
   padding: 1.5rem;
   border-right: 1px solid var(--border);
   z-index: 10;
+  gap: 1.5rem;
+}
+
+.sidebar-title {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+  font-weight: 700;
+}
+
+.sessions-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.session-item {
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.session-item:hover {
+  background: var(--secondary);
+}
+
+.active-session {
+  background: var(--accent) !important;
+  border-color: var(--primary);
+}
+
+.session-info {
+  flex: 1;
+  overflow: hidden;
+}
+
+.session-name {
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-date {
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.delete-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 0 0.5rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.session-item:hover .delete-btn {
+  opacity: 1;
+}
+
+.delete-btn:hover {
+  color: #ea4335;
 }
 
 .main-content {
@@ -176,16 +249,11 @@ body {
   cursor: not-allowed;
 }
 
-.source-badge {
-  background: var(--accent);
-  color: var(--primary);
-  padding: 0.5rem 1rem;
-  border-radius: 0.75rem;
-  font-size: 0.85rem;
-  font-weight: 500;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
+.sources-container {
+  border-top: 1px solid var(--border);
+  padding-top: 1.5rem;
+  flex: 1;
+  overflow-y: auto;
 }
 
 .sources-list {
@@ -197,14 +265,14 @@ body {
 .source-card {
   padding: 1rem;
   border-radius: 1rem;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
 }
 
 .source-index {
   font-weight: 600;
   color: var(--primary);
   margin-bottom: 0.5rem;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
 }
 
@@ -212,7 +280,7 @@ body {
   color: var(--muted);
   line-height: 1.4;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -240,15 +308,6 @@ body {
 .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
 .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
 
-.fade-in {
-  animation: fadeIn 0.3s ease-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
   width: 6px;
@@ -261,8 +320,4 @@ body {
 ::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 3px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
 }

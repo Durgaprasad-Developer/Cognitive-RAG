@@ -21,53 +21,39 @@ const vectorStoreConfig = {
   collectionName: process.env.COLLECTION_NAME || "notebook_rag",
 };
 
-async function clearCollection(size: number) {
+// Ensure collection exists with correct dimensions
+async function ensureCollection() {
   const url = `${vectorStoreConfig.url}/collections/${vectorStoreConfig.collectionName}`;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
-  
-  if (process.env.QDRANT_API_KEY) {
-    headers["api-key"] = process.env.QDRANT_API_KEY;
-  }
+  if (process.env.QDRANT_API_KEY) headers["api-key"] = process.env.QDRANT_API_KEY;
 
   try {
-    // Force delete and wait a bit
-    await fetch(url, { method: "DELETE", headers });
-    
-    // Recreate with EXACT size of the current embedding model
-    const response = await fetch(url, {
-      method: "PUT",
-      headers,
-      body: JSON.stringify({
-        vectors: {
-          size: size,
-          distance: "Cosine",
-        },
-      }),
-    });
-    
-    const result = await response.json();
-    console.log("Qdrant Recreate Result:", JSON.stringify(result));
+    const check = await fetch(url, { headers });
+    if (check.status === 404) {
+      await fetch(url, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify({
+          vectors: { size: 768, distance: "Cosine" },
+        }),
+      });
+    }
   } catch (e) {
-    console.error("Error clearing collection:", e);
+    console.error("Error ensuring collection:", e);
   }
 }
 
-export async function processFile(file: Blob, fileName: string) {
-  // Get dimension from a test embedding to be 100% sure
-  const testEmbed = await embeddings.embedQuery("test");
-  const dim = testEmbed.length;
-  console.log("Embedding Dimension Detected:", dim);
-  
-  await clearCollection(dim);
+export async function processFile(file: Blob, fileName: string, sessionId: string) {
+  await ensureCollection();
 
   let docs;
   if (fileName.endsWith(".pdf")) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const data = await pdf(buffer);
-    docs = [{ pageContent: data.text, metadata: { source: fileName } }];
+    docs = [{ pageContent: data.text, metadata: { source: fileName, sessionId } }];
   } else {
     const text = await file.text();
-    docs = [{ pageContent: text, metadata: { source: fileName } }];
+    docs = [{ pageContent: text, metadata: { source: fileName, sessionId } }];
   }
 
   const textSplitter = new RecursiveCharacterTextSplitter({
@@ -77,16 +63,27 @@ export async function processFile(file: Blob, fileName: string) {
   const splits = await textSplitter.splitDocuments(docs);
 
   if (splits.length > 0) {
+    // We add documents with sessionId in metadata
     await QdrantVectorStore.fromDocuments(splits, embeddings, vectorStoreConfig);
   }
   
   return { success: true, chunks: splits.length };
 }
 
-export async function askQuestion(query: string) {
+export async function askQuestion(query: string, sessionId: string) {
   const vectorStore = await QdrantVectorStore.fromExistingCollection(
     embeddings,
-    vectorStoreConfig
+    {
+      ...vectorStoreConfig,
+      filter: {
+        must: [
+          {
+            key: "metadata.sessionId",
+            match: { value: sessionId }
+          }
+        ]
+      }
+    }
   );
 
   const results = await vectorStore.similaritySearch(query, 5);

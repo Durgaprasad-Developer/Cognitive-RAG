@@ -10,13 +10,39 @@ type Message = {
   sources?: any[];
 };
 
+type Session = {
+  id: string;
+  fileName: string;
+  messages: Message[];
+  timestamp: number;
+};
+
 export default function NotebookLM() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
-  const [fileName, setFileName] = useState<string | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Load sessions from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem("cognitive_rag_sessions");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      setSessions(parsed);
+      if (parsed.length > 0) {
+        setActiveSessionId(parsed[0].id);
+      }
+    }
+  }, []);
+
+  // Save sessions to localStorage whenever they change
+  useEffect(() => {
+    if (sessions.length > 0) {
+      localStorage.setItem("cognitive_rag_sessions", JSON.stringify(sessions));
+    }
+  }, [sessions]);
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -24,18 +50,21 @@ export default function NotebookLM() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [sessions, activeSessionId]);
+
+  const activeSession = sessions.find((s) => s.id === activeSessionId);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsUploading(true);
-    setFileName(file.name);
+    const sessionId = Math.random().toString(36).substring(7);
 
     const formData = new FormData();
     formData.append("file", file);
     formData.append("fileName", file.name);
+    formData.append("sessionId", sessionId);
 
     try {
       const res = await fetch("/api/upload", {
@@ -44,10 +73,14 @@ export default function NotebookLM() {
       });
 
       if (res.ok) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "ai", content: `File **${file.name}** indexed successfully! You can now ask questions.` },
-        ]);
+        const newSession: Session = {
+          id: sessionId,
+          fileName: file.name,
+          messages: [{ role: "ai", content: `File **${file.name}** indexed successfully! You can now ask questions.` }],
+          timestamp: Date.now(),
+        };
+        setSessions((prev) => [newSession, ...prev]);
+        setActiveSessionId(sessionId);
       } else {
         const err = await res.json();
         alert(`Upload failed: ${err.error}`);
@@ -62,41 +95,67 @@ export default function NotebookLM() {
 
   const handleAsk = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!query.trim() || isAsking) return;
+    if (!query.trim() || isAsking || !activeSessionId) return;
 
     const userQuery = query;
     setQuery("");
-    setMessages((prev) => [...prev, { role: "user", content: userQuery }]);
+    
+    // Optimistically update UI
+    setSessions((prev) =>
+      prev.map((s) =>
+        s.id === activeSessionId
+          ? { ...s, messages: [...s.messages, { role: "user", content: userQuery }] }
+          : s
+      )
+    );
+    
     setIsAsking(true);
 
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: userQuery }),
+        body: JSON.stringify({ query: userQuery, sessionId: activeSessionId }),
       });
 
       if (res.ok) {
         const data = await res.json();
-        setMessages((prev) => [
-          ...prev,
-          { role: "ai", content: data.answer, sources: data.sources },
-        ]);
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeSessionId
+              ? { ...s, messages: [...s.messages, { role: "ai", content: data.answer, sources: data.sources }] }
+              : s
+          )
+        );
       } else {
         const err = await res.json();
-        setMessages((prev) => [
-          ...prev,
-          { role: "ai", content: `Error: ${err.error}` },
-        ]);
+        setSessions((prev) =>
+          prev.map((s) =>
+            s.id === activeSessionId
+              ? { ...s, messages: [...s.messages, { role: "ai", content: `Error: ${err.error}` }] }
+              : s
+          )
+        );
       }
     } catch (error) {
       console.error(error);
-      setMessages((prev) => [
-        ...prev,
-        { role: "ai", content: "Something went wrong. Please try again." },
-      ]);
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSessionId
+            ? { ...s, messages: [...s.messages, { role: "ai", content: "Something went wrong. Please try again." }] }
+            : s
+        )
+      );
     } finally {
       setIsAsking(false);
+    }
+  };
+
+  const deleteSession = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+    if (activeSessionId === id) {
+      setActiveSessionId(null);
     }
   };
 
@@ -104,12 +163,10 @@ export default function NotebookLM() {
     <div className="container">
       <div className="sidebar glass">
         <h1 style={{ fontSize: "1.5rem", marginBottom: "1rem", fontWeight: 700 }}>Cognitive RAG</h1>
+        
         <div style={{ marginBottom: "2rem" }}>
-          <p style={{ fontSize: "0.9rem", color: "var(--muted)", marginBottom: "1.5rem", lineHeight: 1.5 }}>
-            Unlock insights from your documents with grounded AI.
-          </p>
           <label className="button primary-btn" style={{ display: "block", textAlign: "center" }}>
-            {isUploading ? "Indexing..." : "Upload Document"}
+            {isUploading ? "Indexing..." : "Upload New Document"}
             <input
               type="file"
               accept=".pdf,.txt"
@@ -118,53 +175,69 @@ export default function NotebookLM() {
               disabled={isUploading}
             />
           </label>
-          {fileName && (
-            <div className="source-badge active-file" style={{ marginTop: "1rem" }}>
-              📄 {fileName}
-            </div>
-          )}
         </div>
-        
+
         <div style={{ flex: 1, overflowY: "auto" }}>
-          <h3 style={{ fontSize: "0.9rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--muted)", marginBottom: "1rem" }}>
-            Sources
-          </h3>
-          {(!messages.length || !messages[messages.length - 1].sources) && (
-            <p style={{ fontSize: "0.8rem", color: "var(--muted)", fontStyle: "italic" }}>
-              Retrieved chunks will appear here.
-            </p>
-          )}
-          {messages.length > 0 && messages[messages.length - 1].sources && (
-             <div className="sources-list">
-                {messages[messages.length - 1].sources?.map((s, i) => (
-                  <div key={i} className="source-card glass">
-                    <div className="source-index">Chunk {i+1}</div>
-                    <div className="source-snippet">{s.content}</div>
-                  </div>
-                ))}
-             </div>
-          )}
+          <h3 className="sidebar-title">Recent Chats</h3>
+          <div className="sessions-list">
+            {sessions.map((s) => (
+              <div 
+                key={s.id} 
+                className={`session-item glass ${activeSessionId === s.id ? "active-session" : ""}`}
+                onClick={() => setActiveSessionId(s.id)}
+              >
+                <div className="session-info">
+                  <div className="session-name">📄 {s.fileName}</div>
+                  <div className="session-date">{new Date(s.timestamp).toLocaleDateString()}</div>
+                </div>
+                <button className="delete-btn" onClick={(e) => deleteSession(s.id, e)}>×</button>
+              </div>
+            ))}
+            {sessions.length === 0 && (
+              <p style={{ fontSize: "0.8rem", color: "var(--muted)", fontStyle: "italic" }}>
+                No active chats. Upload a file to start.
+              </p>
+            )}
+          </div>
         </div>
+
+        {activeSession && (
+          <div className="sources-container">
+            <h3 className="sidebar-title">Sources</h3>
+            <div className="sources-list">
+              {activeSession.messages[activeSession.messages.length - 1]?.sources?.map((src: any, idx: number) => (
+                <div key={idx} className="source-card glass shadow-sm">
+                  <div className="source-index">Chunk {idx + 1}</div>
+                  <div className="source-snippet">{src.content}</div>
+                </div>
+              ))}
+              {!activeSession.messages[activeSession.messages.length - 1]?.sources && (
+                <p style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Ask a question to see sources.</p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <main className="main-content">
         <div className="chat-box glass">
-          {messages.length === 0 && (
+          {!activeSessionId ? (
             <div className="welcome-screen">
               <div className="logo-placeholder">🧠</div>
-              <h2>Start your conversation</h2>
-              <p>Upload a PDF or Text file to begin asking questions grounded in your data.</p>
+              <h2>Ready to investigate</h2>
+              <p>Upload a document or select a recent chat to begin your grounded discovery.</p>
             </div>
-          )}
-          {messages.map((m, i) => (
-            <div key={i} className={`message-wrapper ${m.role === "user" ? "user-wrapper" : "ai-wrapper"}`}>
-              <div className={`message ${m.role === "user" ? "user-message" : "ai-message"} shadow-sm`}>
-                <div className="prose">
-                  <ReactMarkdown>{m.content}</ReactMarkdown>
+          ) : (
+            activeSession?.messages.map((m, i) => (
+              <div key={i} className={`message-wrapper ${m.role === "user" ? "user-wrapper" : "ai-wrapper"}`}>
+                <div className={`message ${m.role === "user" ? "user-message" : "ai-message"} shadow-sm`}>
+                  <div className="prose">
+                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
           <div ref={chatEndRef} />
         </div>
 
@@ -172,12 +245,12 @@ export default function NotebookLM() {
           <form onSubmit={handleAsk} style={{ display: "flex", gap: "1rem" }}>
             <input
               className="input"
-              placeholder={fileName ? "Ask anything about the document..." : "Upload a document first"}
+              placeholder={activeSessionId ? "Ask anything about the document..." : "Select or upload a document"}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              disabled={!fileName || isAsking}
+              disabled={!activeSessionId || isAsking}
             />
-            <button className="button send-btn" type="submit" disabled={!fileName || isAsking || !query.trim()}>
+            <button className="button send-btn" type="submit" disabled={!activeSessionId || isAsking || !query.trim()}>
               {isAsking ? "Thinking..." : "Send"}
             </button>
           </form>
