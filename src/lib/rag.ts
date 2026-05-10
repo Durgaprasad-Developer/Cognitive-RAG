@@ -59,13 +59,21 @@ export async function processFile(file: Blob, fileName: string, sessionId: strin
 export async function askQuestion(query: string, sessionId: string) {
   const vectorStore = await QdrantVectorStore.fromExistingCollection(
     embeddings,
-    {
-      ...vectorStoreConfig,
-      filter: { must: [{ key: "metadata.sessionId", match: { value: sessionId } }] }
-    }
+    vectorStoreConfig
   );
 
-  const results = await vectorStore.similaritySearch(query, 5);
+  // Correct way to filter by sessionId in Qdrant similarity search
+  const results = await vectorStore.similaritySearch(query, 5, {
+    must: [
+      {
+        key: "metadata.sessionId",
+        match: {
+          value: sessionId,
+        },
+      },
+    ],
+  });
+
   const context = results.map(r => r.pageContent).join("\n\n");
 
   const systemPrompt = `You are an AI assistant helping a user with their document.
