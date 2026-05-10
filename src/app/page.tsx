@@ -64,6 +64,12 @@ export default function NotebookLM() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Check file size (4.5MB Vercel Limit)
+    if (file.size > 4.5 * 1024 * 1024) {
+      alert("❌ [STAGE 0: PRE-CHECK] File is too large. Vercel limit is 4.5MB. Please upload a smaller PDF.");
+      return;
+    }
+
     setIsUploading(true);
     setStatusMessage("Reading document...");
     const sessionId = Math.random().toString(36).substring(7);
@@ -74,17 +80,12 @@ export default function NotebookLM() {
     formData.append("sessionId", sessionId);
 
     try {
-      setTimeout(() => {
-        if (isUploading) setStatusMessage("Generating embeddings...");
-      }, 1000);
-      setTimeout(() => {
-        if (isUploading) setStatusMessage("Indexing in Qdrant Cloud...");
-      }, 3000);
-
       const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
       });
+
+      const data = await res.json();
 
       if (res.ok) {
         const newSession: Session = {
@@ -96,12 +97,10 @@ export default function NotebookLM() {
         setSessions((prev) => [newSession, ...prev]);
         setActiveSessionId(sessionId);
       } else {
-        const err = await res.json();
-        alert(`Upload failed: ${err.error || "Timeout occurred. Try a smaller file."}`);
+        alert(`❌ Upload Failed: ${data.error || "Internal Server Error"}`);
       }
-    } catch (error) {
-      console.error(error);
-      alert("Error uploading file.");
+    } catch (error: any) {
+      alert(`❌ [STAGE 1: NETWORK] Failed to connect to server: ${error.message}`);
     } finally {
       setIsUploading(false);
       setStatusMessage("");
@@ -127,21 +126,15 @@ export default function NotebookLM() {
     setStatusMessage("Searching documents...");
 
     try {
-      setTimeout(() => {
-        if (isAsking) setStatusMessage("Consulting Gemini...");
-      }, 1000);
-      setTimeout(() => {
-        if (isAsking) setStatusMessage("Processing through Orchestra...");
-      }, 5000);
-
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: userQuery, sessionId: activeSessionId }),
       });
 
+      const data = await res.json();
+
       if (res.ok) {
-        const data = await res.json();
         setSessions((prev) =>
           prev.map((s) =>
             s.id === activeSessionId
@@ -156,21 +149,19 @@ export default function NotebookLM() {
           )
         );
       } else {
-        const err = await res.json();
         setSessions((prev) =>
           prev.map((s) =>
             s.id === activeSessionId
-              ? { ...s, messages: [...s.messages, { role: "ai", content: `**Error:** ${err.error}` }] }
+              ? { ...s, messages: [...s.messages, { role: "ai", content: `❌ **Backend Error:** ${data.error}` }] }
               : s
           )
         );
       }
-    } catch (error) {
-      console.error(error);
+    } catch (error: any) {
       setSessions((prev) =>
         prev.map((s) =>
           s.id === activeSessionId
-            ? { ...s, messages: [...s.messages, { role: "ai", content: "Something went wrong. Please try again." }] }
+            ? { ...s, messages: [...s.messages, { role: "ai", content: `❌ **Network Error:** ${error.message}` }] }
             : s
         )
       );

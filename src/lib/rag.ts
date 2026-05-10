@@ -32,90 +32,104 @@ async function ensureCollection() {
         }),
       });
     }
-  } catch (e) {
-    console.error("Error ensuring collection:", e);
+  } catch (e: any) {
+    throw new Error(`[STAGE 4: CLOUD_STORE] Qdrant connection failed: ${e.message}`);
   }
 }
 
 export async function processFile(file: Blob, fileName: string, sessionId: string) {
-  await ensureCollection();
-  let docs;
-  if (fileName.endsWith(".pdf")) {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const data = await pdf(buffer);
-    docs = [{ pageContent: data.text, metadata: { source: fileName, sessionId } }];
-  } else {
-    const text = await file.text();
-    docs = [{ pageContent: text, metadata: { source: fileName, sessionId } }];
-  }
-  const textSplitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 200 });
-  const splits = await textSplitter.splitDocuments(docs);
-  
-  if (splits.length > 0) {
-    await QdrantVectorStore.fromDocuments(splits, embeddings, vectorStoreConfig);
+  try {
+    await ensureCollection();
     
-    // Verification: Wait for Qdrant to confirm indexing
-    let retries = 5;
-    while (retries > 0) {
-      const vs = await QdrantVectorStore.fromExistingCollection(embeddings, vectorStoreConfig);
-      const test = await vs.similaritySearch("test", 1, {
-        must: [{ key: "metadata.sessionId", match: { value: sessionId } }]
-      });
-      if (test.length > 0) break;
-      await new Promise(r => setTimeout(r, 2000));
-      retries--;
+    let docs;
+    try {
+      if (fileName.endsWith(".pdf")) {
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const data = await pdf(buffer);
+        docs = [{ pageContent: data.text, metadata: { source: fileName, sessionId } }];
+      } else {
+        const text = await file.text();
+        docs = [{ pageContent: text, metadata: { source: fileName, sessionId } }];
+      }
+    } catch (e: any) {
+      throw new Error(`[STAGE 2: PDF_PARSE] Failed to extract text: ${e.message}`);
     }
+
+    const textSplitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 200 });
+    const splits = await textSplitter.splitDocuments(docs);
+    
+    if (splits.length > 0) {
+      try {
+        await QdrantVectorStore.fromDocuments(splits, embeddings, vectorStoreConfig);
+      } catch (e: any) {
+        throw new Error(`[STAGE 3: EMBEDDING/STORE] Failed to index vectors: ${e.message}`);
+      }
+      
+      // Verification
+      let retries = 3;
+      while (retries > 0) {
+        try {
+          const vs = await QdrantVectorStore.fromExistingCollection(embeddings, vectorStoreConfig);
+          const test = await vs.similaritySearch("test", 1, {
+            must: [{ key: "metadata.sessionId", match: { value: sessionId } }]
+          });
+          if (test.length > 0) break;
+        } catch (e) {}
+        await new Promise(r => setTimeout(r, 2000));
+        retries--;
+      }
+    }
+    
+    return { success: true, chunks: splits.length };
+  } catch (error: any) {
+    console.error("Indexing Error:", error);
+    throw error;
   }
-  
-  return { success: true, chunks: splits.length };
 }
 
 export async function askQuestion(query: string, sessionId: string) {
   try {
-    const vectorStore = await QdrantVectorStore.fromExistingCollection(
-      embeddings,
-      vectorStoreConfig
-    );
+    let vectorStore;
+    try {
+      vectorStore = await QdrantVectorStore.fromExistingCollection(
+        embeddings,
+        vectorStoreConfig
+      );
+    } catch (e: any) {
+      throw new Error(`[STAGE 5: RETRIEVAL] Database connection failed: ${e.message}`);
+    }
 
     const results = await vectorStore.similaritySearch(query, 5, {
-      must: [
-        {
-          key: "metadata.sessionId",
-          match: {
-            value: sessionId,
-          },
-        },
-      ],
+      must: [{ key: "metadata.sessionId", match: { value: sessionId } }],
     });
 
     if (results.length === 0) {
       return {
-        answer: "I'm sorry, I couldn't find any relevant information for this session. Please make sure the document was indexed correctly.",
+        answer: "I'm sorry, I couldn't find any relevant information for this session. The document might not have indexed correctly.",
         modelUsed: "System",
         sources: []
       };
     }
 
     const context = results.map(r => r.pageContent).join("\n\n");
-
     const systemPrompt = `You are an AI assistant helping a user with their document.
-    Use the following pieces of retrieved context to answer the question.
-    STRICT RULE: ONLY answer based on the provided context. If the answer is not in the context, say "I'm sorry, I couldn't find that information in the uploaded document."
-    Do NOT use your general knowledge.
-    Context: ${context}`;
+    Use the following context to answer: ${context}`;
 
-    const response = await orchestrator.generateWithFallback(systemPrompt, query);
-
-    return {
-      answer: response.content,
-      modelUsed: response.modelUsed,
-      sources: results.map((doc: any) => ({
-        content: doc.pageContent,
-        metadata: doc.metadata,
-      })),
-    };
+    try {
+      const response = await orchestrator.generateWithFallback(systemPrompt, query);
+      return {
+        answer: response.content,
+        modelUsed: response.modelUsed,
+        sources: results.map((doc: any) => ({
+          content: doc.pageContent,
+          metadata: doc.metadata,
+        })),
+      };
+    } catch (e: any) {
+      throw new Error(`[STAGE 6: AI_ORCHESTRA] Failed to generate answer: ${e.message}`);
+    }
   } catch (error: any) {
     console.error("RAG Error:", error);
-    throw new Error(`RAG Error: ${error.message}`);
+    throw error;
   }
 }
