@@ -9,23 +9,31 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
 });
 
 const model = new ChatGoogleGenerativeAI({
-  model: "models/gemini-flash-latest", // Using the latest flash pointer for best compatibility
+  model: "models/gemini-flash-latest",
   apiKey: process.env.GOOGLE_API_KEY,
   temperature: 0,
 });
 
 const vectorStoreConfig = {
   url: process.env.QDRANT_URL || "http://localhost:6333",
+  apiKey: process.env.QDRANT_API_KEY, // Added support for Cloud API Key
   collectionName: process.env.COLLECTION_NAME || "notebook_rag",
 };
 
 async function clearCollection(size: number) {
   const url = `${vectorStoreConfig.url}/collections/${vectorStoreConfig.collectionName}`;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  
+  // Add API Key header if present (required for Qdrant Cloud)
+  if (process.env.QDRANT_API_KEY) {
+    headers["api-key"] = process.env.QDRANT_API_KEY;
+  }
+
   try {
-    await fetch(url, { method: "DELETE" });
+    await fetch(url, { method: "DELETE", headers });
     await fetch(url, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         vectors: {
           size: size,
