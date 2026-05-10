@@ -25,20 +25,26 @@ export default function NotebookLM() {
   const [isUploading, setIsUploading] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("cognitive_rag_sessions");
+    const savedTheme = localStorage.getItem("cognitive_rag_theme") as "light" | "dark";
+    
+    if (savedTheme) {
+      setTheme(savedTheme);
+      document.body.setAttribute("data-theme", savedTheme);
+    } else {
+      document.body.setAttribute("data-theme", "dark");
+    }
+
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         setSessions(parsed);
-        if (parsed.length > 0) {
-          setActiveSessionId(parsed[0].id);
-        }
-      } catch (e) {
-        console.error("Failed to parse sessions", e);
-      }
+        if (parsed.length > 0) setActiveSessionId(parsed[0].id);
+      } catch (e) { console.error("Failed to parse sessions", e); }
     }
   }, []);
 
@@ -49,6 +55,13 @@ export default function NotebookLM() {
       localStorage.removeItem("cognitive_rag_sessions");
     }
   }, [sessions]);
+
+  const toggleTheme = () => {
+    const newTheme = theme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
+    localStorage.setItem("cognitive_rag_theme", newTheme);
+    document.body.setAttribute("data-theme", newTheme);
+  };
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -64,9 +77,8 @@ export default function NotebookLM() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Check file size (4.5MB Vercel Limit)
     if (file.size > 4.5 * 1024 * 1024) {
-      alert("❌ [STAGE 0: PRE-CHECK] File is too large. Vercel limit is 4.5MB. Please upload a smaller PDF.");
+      alert("❌ [STAGE 0: PRE-CHECK] File is too large. Vercel limit is 4.5MB.");
       return;
     }
 
@@ -100,7 +112,7 @@ export default function NotebookLM() {
         alert(`❌ Upload Failed: ${data.error || "Internal Server Error"}`);
       }
     } catch (error: any) {
-      alert(`❌ [STAGE 1: NETWORK] Failed to connect to server: ${error.message}`);
+      alert(`❌ [STAGE 1: NETWORK] Failed to connect: ${error.message}`);
     } finally {
       setIsUploading(false);
       setStatusMessage("");
@@ -175,20 +187,23 @@ export default function NotebookLM() {
     e.stopPropagation();
     if (confirm("Delete this chat?")) {
       setSessions((prev) => prev.filter((s) => s.id !== id));
-      if (activeSessionId === id) {
-        setActiveSessionId(null);
-      }
+      if (activeSessionId === id) setActiveSessionId(null);
     }
   };
 
   return (
     <div className="container">
       <div className="sidebar glass">
-        <h1 style={{ fontSize: "1.5rem", marginBottom: "1rem", fontWeight: 700 }}>Cognitive RAG</h1>
+        <div className="sidebar-header">
+          <h1 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Cognitive RAG</h1>
+          <button className="theme-toggle" onClick={toggleTheme}>
+            {theme === "dark" ? "☀️" : "🌙"}
+          </button>
+        </div>
         
-        <div style={{ marginBottom: "2rem" }}>
+        <div style={{ marginBottom: "1rem" }}>
           <label className={`button primary-btn ${isUploading || isAsking ? 'disabled' : ''}`} style={{ display: "block", textAlign: "center" }}>
-            {isUploading ? "Indexing..." : "Upload New Document"}
+            {isUploading ? "Indexing..." : "Upload Document"}
             <input
               type="file"
               accept=".pdf,.txt"
@@ -274,15 +289,7 @@ export default function NotebookLM() {
           <form onSubmit={handleAsk} style={{ display: "flex", gap: "1rem" }}>
             <input
               className="input"
-              placeholder={
-                isUploading 
-                ? "Indexing document... please wait" 
-                : isAsking 
-                  ? "Agent is thinking..." 
-                  : activeSessionId 
-                    ? "Ask anything about the document..." 
-                    : "Select or upload a document"
-              }
+              placeholder={isUploading ? "Indexing..." : isAsking ? "Agent is thinking..." : "Ask anything..."}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               disabled={!activeSessionId || isAsking || isUploading}

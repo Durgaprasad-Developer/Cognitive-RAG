@@ -10,8 +10,21 @@
   --glass: rgba(255, 255, 255, 0.8);
 }
 
+/* Explicit Dark Mode Overrides */
+[data-theme="dark"] {
+  --background: #0f1115;
+  --foreground: #e8eaed;
+  --primary: #8ab4f8;
+  --primary-hover: #aecbfa;
+  --secondary: #202124;
+  --accent: #172b4d;
+  --muted: #9aa0a6;
+  --border: rgba(255, 255, 255, 0.1);
+  --glass: rgba(15, 17, 21, 0.8);
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --background: #0f1115;
     --foreground: #e8eaed;
     --primary: #8ab4f8;
@@ -36,6 +49,7 @@ body {
   color: var(--foreground);
   height: 100vh;
   overflow: hidden;
+  transition: background 0.3s ease, color 0.3s ease;
 }
 
 .container {
@@ -57,6 +71,31 @@ body {
   border-right: 1px solid var(--border);
   z-index: 10;
   gap: 1.5rem;
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.theme-toggle {
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1.2rem;
+  transition: transform 0.2s;
+}
+
+.theme-toggle:hover {
+  transform: scale(1.1);
 }
 
 .sidebar-title {
@@ -83,6 +122,11 @@ body {
   align-items: center;
   transition: all 0.2s ease;
   border: 1px solid transparent;
+}
+
+.session-item.disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .session-item:hover {
@@ -226,49 +270,20 @@ body {
 }
 
 @keyframes dotTyping {
-  0% {
-    box-shadow: 9984px 0 0 0 var(--primary), 9996px 0 0 0 var(--primary), 10008px 0 0 0 var(--primary);
-  }
-  16.667% {
-    box-shadow: 9984px -10px 0 0 var(--primary), 9996px 0 0 0 var(--primary), 10008px 0 0 0 var(--primary);
-  }
-  33.333% {
-    box-shadow: 9984px 0 0 0 var(--primary), 9996px 0 0 0 var(--primary), 10008px 0 0 0 var(--primary);
-  }
-  50% {
-    box-shadow: 9984px 0 0 0 var(--primary), 9996px -10px 0 0 var(--primary), 10008px 0 0 0 var(--primary);
-  }
-  66.667% {
-    box-shadow: 9984px 0 0 0 var(--primary), 9996px 0 0 0 var(--primary), 10008px 0 0 0 var(--primary);
-  }
-  83.333% {
-    box-shadow: 9984px 0 0 0 var(--primary), 9996px 0 0 0 var(--primary), 10008px -10px 0 0 var(--primary);
-  }
-  100% {
-    box-shadow: 9984px 0 0 0 var(--primary), 9996px 0 0 0 var(--primary), 10008px 0 0 0 var(--primary);
-  }
+  0% { box-shadow: 9984px 0 0 0 var(--primary), 9996px 0 0 0 var(--primary), 10008px 0 0 0 var(--primary); }
+  16.667% { box-shadow: 9984px -10px 0 0 var(--primary), 9996px 0 0 0 var(--primary), 10008px 0 0 0 var(--primary); }
+  33.333% { box-shadow: 9984px 0 0 0 var(--primary), 9996px 0 0 0 var(--primary), 10008px 0 0 0 var(--primary); }
+  50% { box-shadow: 9984px 0 0 0 var(--primary), 9996px -10px 0 0 var(--primary), 10008px 0 0 0 var(--primary); }
+  66.667% { box-shadow: 9984px 0 0 0 var(--primary), 9996px 0 0 0 var(--primary), 10008px 0 0 0 var(--primary); }
+  83.333% { box-shadow: 9984px 0 0 0 var(--primary), 9996px 0 0 0 var(--primary), 10008px -10px 0 0 var(--primary); }
+  100% { box-shadow: 9984px 0 0 0 var(--primary), 9996px 0 0 0 var(--primary), 10008px 0 0 0 var(--primary); }
 }
 
-.prose p {
-  margin-bottom: 0.75rem;
-}
-
-.prose p:last-child {
-  margin-bottom: 0;
-}
-
-.prose ul, .prose ol {
-  margin-left: 1.5rem;
-  margin-bottom: 0.75rem;
-}
-
-.prose li {
-  margin-bottom: 0.25rem;
-}
-
-.prose strong {
-  font-weight: 600;
-}
+.prose p { margin-bottom: 0.75rem; }
+.prose p:last-child { margin-bottom: 0; }
+.prose ul, .prose ol { margin-left: 1.5rem; margin-bottom: 0.75rem; }
+.prose li { margin-bottom: 0.25rem; }
+.prose strong { font-weight: 600; }
 
 .input-container {
   border-radius: 1.5rem;
@@ -382,25 +397,12 @@ body {
 .shadow-sm { box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); }
 .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
 
-.fade-in {
-  animation: fadeIn 0.3s ease-out forwards;
-}
-
+.fade-in { animation: fadeIn 0.3s ease-out forwards; }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Scrollbar Styling */
-::-webkit-scrollbar {
-  width: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
