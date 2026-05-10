@@ -1,43 +1,34 @@
-# Cognitive RAG 🧠🎻
+# Cognitive RAG: The 🎻 LLM Orchestra (Baseline v1.0) 🧠🏛️
 
-A high-performance, fault-tolerant RAG application built for grounded document intelligence.
+This is the **Production-Hardened Baseline** for Cognitive RAG. It features a fault-tolerant multi-model orchestration layer and session-isolated document intelligence.
 
-## 🌟 Key Features
+## 🌟 Core Baseline Features
+*   **🎻 LLM Orchestra**: Automatic fallback routing between **Gemini**, **Groq**, and **OpenRouter**.
+*   **🛡️ Fault Tolerance**: 30s/60s circuit breakers and "Smart Search" fallback strategies.
+*   **📄 Multi-Session Support**: Metadata-level isolation in Qdrant Cloud. Each upload creates a unique chat world.
+*   **🎨 Premium UI**: Manual Theme Toggle (Dark/Light), input locking, and real-time status badges.
+*   **🕵️‍♂️ Deep Diagnostics**: Stage-based error tracing ([STAGE 1] to [STAGE 6]).
 
-### 🎻 Multi-Model LLM Orchestra
-*   **Intelligent Fallback**: Automatically switches between **Gemini 2.0**, **Groq (Llama 3.3)**, and **OpenRouter** if a rate limit or timeout occurs.
-*   **Local Fail-Safe**: Integrated with **Ollama** for internet-independent retrieval when running locally.
-*   **Automatic Timeouts**: 15s/30s circuit breakers ensure the agent never hangs.
+## 🛠️ Technical Architecture
+*   **Frontend**: Next.js 15, React 19, Vanilla CSS (Glassmorphism).
+*   **Persistence**: localStorage (Sessions) + Qdrant Cloud (Vectors).
+*   **Orchestration**: Provider-Agnostic Abstraction (`lib/llm`).
+*   **Embeddings**: Gemini-Embedding-001 (768-dim).
 
-### 📄 Document Intelligence
-*   **Multi-PDF Support**: Isolated chat sessions for multiple documents. Switch between your investment plans and resumes instantly.
-*   **Perfect Grounding**: Strict system prompts ensure the AI only answers based on your uploaded data.
-*   **Smart Chunking**: Powered by LangChain's Recursive Splitter for high-context retrieval.
-
-### 🎨 Premium UX/UI
-*   **Glassmorphism Design**: Sleek, modern interface with dark-mode support.
-*   **Real-Time Status**: Granular status indicators (Searching, Thinking, Generating) with model provenance badges.
-*   **Persistence**: Session history is saved in `localStorage`, so your chats are ready whenever you refresh.
-*   **Markdown Support**: Beautiful rendering for bold text, lists, and tables.
-
-## 🛠️ Tech Stack
-*   **Frontend**: Next.js 15, React 19, Vanilla CSS
-*   **Orchestration**: LangChain, Groq, OpenRouter, Google Generative AI
-*   **Vector DB**: Qdrant Cloud
-*   **Embeddings**: Gemini-Embedding-001
-
-## 🔑 Environment Setup
-Create a `.env` file with the following:
+## 🔑 Environment Variables
 ```env
-GOOGLE_API_KEY=your_key
-GROQ_API_KEY=your_key
-OPENROUTER_API_KEY=your_key
-QDRANT_URL=your_url
-QDRANT_API_KEY=your_key
-COLLECTION_NAME=notebook_rag
+GOOGLE_API_KEY=      # Primary AI & Embeddings
+GROQ_API_KEY=        # Ultra-fast Fallback
+OPENROUTER_API_KEY=  # Universal Fallback
+QDRANT_URL=          # Vector Store URL
+QDRANT_API_KEY=      # Vector Store Key
+COLLECTION_NAME=     # notebook_rag
 ```
 
-## 🚀 Getting Started
-1. `npm install`
-2. `npm run dev`
-3. Upload your first PDF and start investigating!
+## 📜 Development Rules
+1.  **Baseline Lock**: The `main` branch is the stable baseline.
+2.  **Branching**: All new features must be developed on separate branches (e.g., `cognitive-RAG`).
+3.  **Merge Policy**: Only merge to `main` after full local and preview-link verification.
+
+---
+**Status**: Stable & Production Ready. 🚀
