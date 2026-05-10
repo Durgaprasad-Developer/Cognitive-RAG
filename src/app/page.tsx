@@ -29,10 +29,14 @@ export default function NotebookLM() {
   useEffect(() => {
     const saved = localStorage.getItem("cognitive_rag_sessions");
     if (saved) {
-      const parsed = JSON.parse(saved);
-      setSessions(parsed);
-      if (parsed.length > 0) {
-        setActiveSessionId(parsed[0].id);
+      try {
+        const parsed = JSON.parse(saved);
+        setSessions(parsed);
+        if (parsed.length > 0) {
+          setActiveSessionId(parsed[0].id);
+        }
+      } catch (e) {
+        console.error("Failed to parse sessions", e);
       }
     }
   }, []);
@@ -40,6 +44,8 @@ export default function NotebookLM() {
   useEffect(() => {
     if (sessions.length > 0) {
       localStorage.setItem("cognitive_rag_sessions", JSON.stringify(sessions));
+    } else {
+      localStorage.removeItem("cognitive_rag_sessions");
     }
   }, [sessions]);
 
@@ -67,7 +73,6 @@ export default function NotebookLM() {
     formData.append("sessionId", sessionId);
 
     try {
-      // Simulate indexing stage for better UX
       setTimeout(() => setStatusMessage("Generating embeddings..."), 1000);
       setTimeout(() => setStatusMessage("Indexing vectors in Cloud..."), 2500);
 
@@ -117,7 +122,6 @@ export default function NotebookLM() {
     setStatusMessage("Searching documents...");
 
     try {
-      // Transition to thinking after a short delay
       setTimeout(() => {
         if (isAsking) setStatusMessage("Thinking...");
       }, 1500);
@@ -127,8 +131,6 @@ export default function NotebookLM() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: userQuery, sessionId: activeSessionId }),
       });
-
-      setStatusMessage("Generating response...");
 
       if (res.ok) {
         const data = await res.json();
@@ -141,10 +143,14 @@ export default function NotebookLM() {
         );
       } else {
         const err = await res.json();
+        let errorMsg = `Error: ${err.error}`;
+        if (err.error?.includes("429")) {
+          errorMsg = "⚠️ **Gemini is resting (Rate Limit hit).** Please wait 60 seconds and try again. The free tier has a limit of 20 requests per minute.";
+        }
         setSessions((prev) =>
           prev.map((s) =>
             s.id === activeSessionId
-              ? { ...s, messages: [...s.messages, { role: "ai", content: `Error: ${err.error}` }] }
+              ? { ...s, messages: [...s.messages, { role: "ai", content: errorMsg }] }
               : s
           )
         );
@@ -167,7 +173,10 @@ export default function NotebookLM() {
   const deleteSession = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm("Delete this chat?")) {
-      setSessions((prev) => prev.filter((s) => s.id !== id));
+      setSessions((prev) => {
+        const updated = prev.filter((s) => s.id !== id);
+        return updated;
+      });
       if (activeSessionId === id) {
         setActiveSessionId(null);
       }
