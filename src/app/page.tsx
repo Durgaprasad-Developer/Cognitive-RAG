@@ -4,12 +4,14 @@ import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import "./globals.css";
 
-type Message = {
+interface Message {
   role: "user" | "ai";
   content: string;
-  sources?: any[];
+  sources?: { content: string; metadata: any }[];
+  strategyUsed?: string;
+  grounded?: boolean;
   modelUsed?: string;
-};
+}
 
 type Session = {
   id: string;
