@@ -76,10 +76,17 @@ export async function askQuestion(query: string, sessionId: string) {
 
   // 2. Adaptive Retrieval (Internally handles safety)
   const retriever = new HybridRetriever(vectorStore);
-  const topChunks = await retriever.search(query, sessionId);
+  let topChunks = await retriever.search(query, sessionId);
+
+  // Broader search fallback if no results
+  if (!topChunks || topChunks.length === 0) {
+    console.warn("🔍 [DIAGNOSTIC] Strict search returned 0 results. Trying broader search...");
+    topChunks = await vectorStore.similaritySearch(query, 5); // Unfiltered search
+  }
 
   if (!topChunks || topChunks.length === 0) {
-    throw new Error("No information found in the document for this query.");
+    console.error("❌ [DIAGNOSTIC] Retrieval failed: No chunks found in Qdrant collection.");
+    throw new Error("I couldn't find any relevant information in your document. Please ensure the document was indexed correctly.");
   }
 
   const context = topChunks.map((c: any) => c.content).join("\n\n");
