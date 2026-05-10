@@ -23,9 +23,9 @@ export default function NotebookLM() {
   const [query, setQuery] = useState("");
   const [isUploading, setIsUploading] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Load sessions from localStorage on mount
   useEffect(() => {
     const saved = localStorage.getItem("cognitive_rag_sessions");
     if (saved) {
@@ -37,7 +37,6 @@ export default function NotebookLM() {
     }
   }, []);
 
-  // Save sessions to localStorage whenever they change
   useEffect(() => {
     if (sessions.length > 0) {
       localStorage.setItem("cognitive_rag_sessions", JSON.stringify(sessions));
@@ -50,7 +49,7 @@ export default function NotebookLM() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [sessions, activeSessionId]);
+  }, [sessions, activeSessionId, statusMessage]);
 
   const activeSession = sessions.find((s) => s.id === activeSessionId);
 
@@ -59,6 +58,7 @@ export default function NotebookLM() {
     if (!file) return;
 
     setIsUploading(true);
+    setStatusMessage("Reading document...");
     const sessionId = Math.random().toString(36).substring(7);
 
     const formData = new FormData();
@@ -67,6 +67,10 @@ export default function NotebookLM() {
     formData.append("sessionId", sessionId);
 
     try {
+      // Simulate indexing stage for better UX
+      setTimeout(() => setStatusMessage("Generating embeddings..."), 1000);
+      setTimeout(() => setStatusMessage("Indexing vectors in Cloud..."), 2500);
+
       const res = await fetch("/api/upload", {
         method: "POST",
         body: formData,
@@ -90,6 +94,7 @@ export default function NotebookLM() {
       alert("Error uploading file.");
     } finally {
       setIsUploading(false);
+      setStatusMessage("");
     }
   };
 
@@ -100,7 +105,6 @@ export default function NotebookLM() {
     const userQuery = query;
     setQuery("");
     
-    // Optimistically update UI
     setSessions((prev) =>
       prev.map((s) =>
         s.id === activeSessionId
@@ -110,13 +114,21 @@ export default function NotebookLM() {
     );
     
     setIsAsking(true);
+    setStatusMessage("Searching documents...");
 
     try {
+      // Transition to thinking after a short delay
+      setTimeout(() => {
+        if (isAsking) setStatusMessage("Thinking...");
+      }, 1500);
+
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: userQuery, sessionId: activeSessionId }),
       });
+
+      setStatusMessage("Generating response...");
 
       if (res.ok) {
         const data = await res.json();
@@ -148,14 +160,17 @@ export default function NotebookLM() {
       );
     } finally {
       setIsAsking(false);
+      setStatusMessage("");
     }
   };
 
   const deleteSession = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setSessions((prev) => prev.filter((s) => s.id !== id));
-    if (activeSessionId === id) {
-      setActiveSessionId(null);
+    if (confirm("Delete this chat?")) {
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+      if (activeSessionId === id) {
+        setActiveSessionId(null);
+      }
     }
   };
 
@@ -228,15 +243,25 @@ export default function NotebookLM() {
               <p>Upload a document or select a recent chat to begin your grounded discovery.</p>
             </div>
           ) : (
-            activeSession?.messages.map((m, i) => (
-              <div key={i} className={`message-wrapper ${m.role === "user" ? "user-wrapper" : "ai-wrapper"}`}>
-                <div className={`message ${m.role === "user" ? "user-message" : "ai-message"} shadow-sm`}>
-                  <div className="prose">
-                    <ReactMarkdown>{m.content}</ReactMarkdown>
+            <>
+              {activeSession?.messages.map((m, i) => (
+                <div key={i} className={`message-wrapper ${m.role === "user" ? "user-wrapper" : "ai-wrapper"}`}>
+                  <div className={`message ${m.role === "user" ? "user-message" : "ai-message"} shadow-sm`}>
+                    <div className="prose">
+                      <ReactMarkdown>{m.content}</ReactMarkdown>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              ))}
+              {statusMessage && (
+                <div className="message-wrapper ai-wrapper fade-in">
+                  <div className="message ai-message status-message">
+                    <span className="dot-typing"></span>
+                    {statusMessage}
+                  </div>
+                </div>
+              )}
+            </>
           )}
           <div ref={chatEndRef} />
         </div>
