@@ -14,6 +14,7 @@ export class OpenRouterProvider extends BaseLLM {
         baseURL: "https://openrouter.ai/api/v1",
       },
       temperature: 0,
+      maxTokens: 1024, // Keep it within free tier credit limits
     });
   }
 

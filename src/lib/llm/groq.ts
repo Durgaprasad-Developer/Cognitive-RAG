@@ -7,8 +7,9 @@ export class GroqProvider extends BaseLLM {
 
   constructor(apiKey: string) {
     super();
+    // Use 'model' instead of 'modelName' for the latest library
     this.model = new ChatGroq({
-      modelName: "llama-3.3-70b-versatile",
+      model: "llama-3.3-70b-versatile",
       apiKey,
       temperature: 0,
     });
