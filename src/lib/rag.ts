@@ -1,15 +1,15 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { QdrantVectorStore } from "@langchain/qdrant";
-import { PDFParse } from "pdf-parse";
+import pdf from "pdf-extraction";
 
 const embeddings = new GoogleGenerativeAIEmbeddings({
-  model: "gemini-embedding-001",
+  model: "models/gemini-embedding-001",
   apiKey: process.env.GOOGLE_API_KEY,
 });
 
 const model = new ChatGoogleGenerativeAI({
-  model: "gemini-flash-latest",
+  model: "models/gemini-flash-latest", // Using the latest flash pointer for best compatibility
   apiKey: process.env.GOOGLE_API_KEY,
   temperature: 0,
 });
@@ -19,7 +19,7 @@ const vectorStoreConfig = {
   collectionName: process.env.COLLECTION_NAME || "notebook_rag",
 };
 
-async function clearCollection() {
+async function clearCollection(size: number) {
   const url = `${vectorStoreConfig.url}/collections/${vectorStoreConfig.collectionName}`;
   try {
     await fetch(url, { method: "DELETE" });
@@ -28,7 +28,7 @@ async function clearCollection() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         vectors: {
-          size: 3072,
+          size: size,
           distance: "Cosine",
         },
       }),
@@ -39,15 +39,16 @@ async function clearCollection() {
 }
 
 export async function processFile(file: Blob, fileName: string) {
-  await clearCollection();
+  const testEmbed = await embeddings.embedQuery("test");
+  const dim = testEmbed.length;
+  
+  await clearCollection(dim);
 
   let docs;
   if (fileName.endsWith(".pdf")) {
-    const arrayBuffer = await file.arrayBuffer();
-    const parser = new PDFParse({ data: arrayBuffer });
-    const result = await parser.getText();
-    docs = [{ pageContent: result.text, metadata: { source: fileName } }];
-    await parser.destroy();
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const data = await pdf(buffer);
+    docs = [{ pageContent: data.text, metadata: { source: fileName } }];
   } else {
     const text = await file.text();
     docs = [{ pageContent: text, metadata: { source: fileName } }];
@@ -59,7 +60,9 @@ export async function processFile(file: Blob, fileName: string) {
   });
   const splits = await textSplitter.splitDocuments(docs);
 
-  await QdrantVectorStore.fromDocuments(splits, embeddings, vectorStoreConfig);
+  if (splits.length > 0) {
+    await QdrantVectorStore.fromDocuments(splits, embeddings, vectorStoreConfig);
+  }
   
   return { success: true, chunks: splits.length };
 }
