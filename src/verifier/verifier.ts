@@ -12,7 +12,7 @@ export async function verifyGrounding(answer: string, context: string): Promise<
   try {
     const response = await orchestrator.generateWithFallback(prompt, "Verify grounding.");
     // Extract JSON from response
-    const jsonStr = response.content.match(/\{.*\}/s)?.[0] || '{"grounded": true, "reason": "Could not parse verification"}';
+    const jsonStr = response.content.match(/\{[\s\S]*\}/)?.[0] || '{"grounded": true, "reason": "Could not parse verification"}';
     return JSON.parse(jsonStr);
   } catch (e) {
     return { grounded: true, reason: "Verification bypassed due to error" };
