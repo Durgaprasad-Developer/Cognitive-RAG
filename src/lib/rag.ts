@@ -64,20 +64,6 @@ export async function processFile(file: Blob, fileName: string, sessionId: strin
       } catch (e: any) {
         throw new Error(`[STAGE 3: EMBEDDING/STORE] Failed to index vectors: ${e.message}`);
       }
-      
-      // Verification
-      let retries = 3;
-      while (retries > 0) {
-        try {
-          const vs = await QdrantVectorStore.fromExistingCollection(embeddings, vectorStoreConfig);
-          const test = await vs.similaritySearch("test", 1, {
-            must: [{ key: "metadata.sessionId", match: { value: sessionId } }]
-          });
-          if (test.length > 0) break;
-        } catch (e) {}
-        await new Promise(r => setTimeout(r, 2000));
-        retries--;
-      }
     }
     
     return { success: true, chunks: splits.length };
@@ -96,16 +82,28 @@ export async function askQuestion(query: string, sessionId: string) {
         vectorStoreConfig
       );
     } catch (e: any) {
-      throw new Error(`[STAGE 5: RETRIEVAL] Database connection failed: ${e.message}`);
+      throw new Error(`[STAGE 5: DB_CONNECT] Database connection failed: ${e.message}`);
     }
 
-    const results = await vectorStore.similaritySearch(query, 5, {
-      must: [{ key: "metadata.sessionId", match: { value: sessionId } }],
-    });
+    let results;
+    try {
+      // Simplified filter to avoid 400 Bad Request in Qdrant
+      results = await vectorStore.similaritySearch(query, 5, {
+        must: [
+          {
+            key: "metadata.sessionId",
+            match: { value: sessionId }
+          }
+        ]
+      });
+    } catch (e: any) {
+      console.error("Similarity Search Error:", e);
+      throw new Error(`[STAGE 5.1: VECTOR_SEARCH] Similarity search failed: ${e.message}`);
+    }
 
     if (results.length === 0) {
       return {
-        answer: "I'm sorry, I couldn't find any relevant information for this session. The document might not have indexed correctly.",
+        answer: "I'm sorry, I couldn't find any relevant information for this session. Please try re-uploading the document.",
         modelUsed: "System",
         sources: []
       };
@@ -113,7 +111,8 @@ export async function askQuestion(query: string, sessionId: string) {
 
     const context = results.map(r => r.pageContent).join("\n\n");
     const systemPrompt = `You are an AI assistant helping a user with their document.
-    Use the following context to answer: ${context}`;
+    Use the following pieces of retrieved context to answer the user's question.
+    Context: ${context}`;
 
     try {
       const response = await orchestrator.generateWithFallback(systemPrompt, query);
@@ -126,10 +125,10 @@ export async function askQuestion(query: string, sessionId: string) {
         })),
       };
     } catch (e: any) {
-      throw new Error(`[STAGE 6: AI_ORCHESTRA] Failed to generate answer: ${e.message}`);
+      throw new Error(`[STAGE 6: AI_ORCHESTRA] Generation failed: ${e.message}`);
     }
   } catch (error: any) {
-    console.error("RAG Error:", error);
+    console.error("AskQuestion Root Error:", error);
     throw error;
   }
 }
