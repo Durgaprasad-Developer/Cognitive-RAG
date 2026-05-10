@@ -8,6 +8,7 @@ type Message = {
   role: "user" | "ai";
   content: string;
   sources?: any[];
+  modelUsed?: string;
 };
 
 type Session = {
@@ -137,15 +138,21 @@ export default function NotebookLM() {
         setSessions((prev) =>
           prev.map((s) =>
             s.id === activeSessionId
-              ? { ...s, messages: [...s.messages, { role: "ai", content: data.answer, sources: data.sources }] }
+              ? { 
+                  ...s, 
+                  messages: [
+                    ...s.messages, 
+                    { role: "ai", content: data.answer, sources: data.sources, modelUsed: data.modelUsed }
+                  ] 
+                }
               : s
           )
         );
       } else {
         const err = await res.json();
         let errorMsg = `Error: ${err.error}`;
-        if (err.error?.includes("429")) {
-          errorMsg = "⚠️ **Gemini is resting (Rate Limit hit).** Please wait 60 seconds and try again. The free tier has a limit of 20 requests per minute.";
+        if (err.error?.includes("429") || err.error?.includes("quota")) {
+          errorMsg = "⚠️ **Rate Limit hit.** The orchestra is struggling. Please add a GROQ_API_KEY for seamless fallbacks or wait 60 seconds.";
         }
         setSessions((prev) =>
           prev.map((s) =>
@@ -173,10 +180,7 @@ export default function NotebookLM() {
   const deleteSession = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm("Delete this chat?")) {
-      setSessions((prev) => {
-        const updated = prev.filter((s) => s.id !== id);
-        return updated;
-      });
+      setSessions((prev) => prev.filter((s) => s.id !== id));
       if (activeSessionId === id) {
         setActiveSessionId(null);
       }
@@ -217,11 +221,6 @@ export default function NotebookLM() {
                 <button className="delete-btn" onClick={(e) => deleteSession(s.id, e)}>×</button>
               </div>
             ))}
-            {sessions.length === 0 && (
-              <p style={{ fontSize: "0.8rem", color: "var(--muted)", fontStyle: "italic" }}>
-                No active chats. Upload a file to start.
-              </p>
-            )}
           </div>
         </div>
 
@@ -235,9 +234,6 @@ export default function NotebookLM() {
                   <div className="source-snippet">{src.content}</div>
                 </div>
               ))}
-              {!activeSession.messages[activeSession.messages.length - 1]?.sources && (
-                <p style={{ fontSize: "0.75rem", color: "var(--muted)" }}>Ask a question to see sources.</p>
-              )}
             </div>
           </div>
         )}
@@ -247,9 +243,9 @@ export default function NotebookLM() {
         <div className="chat-box glass">
           {!activeSessionId ? (
             <div className="welcome-screen">
-              <div className="logo-placeholder">🧠</div>
-              <h2>Ready to investigate</h2>
-              <p>Upload a document or select a recent chat to begin your grounded discovery.</p>
+              <div className="logo-placeholder">🎻</div>
+              <h2>LLM Orchestra Active</h2>
+              <p>Upload a document to experience multi-model grounded intelligence.</p>
             </div>
           ) : (
             <>
@@ -259,6 +255,9 @@ export default function NotebookLM() {
                     <div className="prose">
                       <ReactMarkdown>{m.content}</ReactMarkdown>
                     </div>
+                    {m.modelUsed && (
+                      <div className="model-badge">{m.modelUsed}</div>
+                    )}
                   </div>
                 </div>
               ))}

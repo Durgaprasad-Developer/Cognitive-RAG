@@ -169,6 +169,7 @@ body {
   border-radius: 1.25rem;
   line-height: 1.6;
   font-size: 0.95rem;
+  position: relative;
 }
 
 .user-message {
@@ -181,6 +182,18 @@ body {
   background: var(--secondary);
   color: var(--foreground);
   border-bottom-left-radius: 0.25rem;
+}
+
+.model-badge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: var(--muted);
+  margin-top: 0.5rem;
+  opacity: 0.8;
+  border-top: 1px solid var(--border);
+  padding-top: 0.4rem;
 }
 
 .status-message {

@@ -13,6 +13,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Chat error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Extract a clean message
+    const message = error.message || "An unexpected error occurred";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

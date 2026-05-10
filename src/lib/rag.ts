@@ -1,5 +1,6 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai";
+import { ChatGroq } from "@langchain/groq";
 import { QdrantVectorStore } from "@langchain/qdrant";
 // @ts-ignore
 import pdf from "pdf-extraction";
@@ -9,11 +10,21 @@ const embeddings = new GoogleGenerativeAIEmbeddings({
   apiKey: process.env.GOOGLE_API_KEY,
 });
 
-const model = new ChatGoogleGenerativeAI({
+// Primary Brain: Gemini
+const primaryModel = new ChatGoogleGenerativeAI({
   model: "models/gemini-flash-latest",
   apiKey: process.env.GOOGLE_API_KEY,
   temperature: 0,
 });
+
+// Secondary Brain: Groq (Llama 3.3)
+const fallbackModel = process.env.GROQ_API_KEY 
+  ? new ChatGroq({
+      modelName: "llama-3.3-70b-versatile",
+      apiKey: process.env.GROQ_API_KEY,
+      temperature: 0,
+    })
+  : null;
 
 const vectorStoreConfig = {
   url: process.env.QDRANT_URL || "http://localhost:6333",
@@ -21,7 +32,6 @@ const vectorStoreConfig = {
   collectionName: process.env.COLLECTION_NAME || "notebook_rag",
 };
 
-// Ensure collection exists with correct dimensions
 async function ensureCollection() {
   const url = `${vectorStoreConfig.url}/collections/${vectorStoreConfig.collectionName}`;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -45,7 +55,6 @@ async function ensureCollection() {
 
 export async function processFile(file: Blob, fileName: string, sessionId: string) {
   await ensureCollection();
-
   let docs;
   if (fileName.endsWith(".pdf")) {
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -55,18 +64,11 @@ export async function processFile(file: Blob, fileName: string, sessionId: strin
     const text = await file.text();
     docs = [{ pageContent: text, metadata: { source: fileName, sessionId } }];
   }
-
-  const textSplitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 1000,
-    chunkOverlap: 200,
-  });
+  const textSplitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 200 });
   const splits = await textSplitter.splitDocuments(docs);
-
   if (splits.length > 0) {
-    // We add documents with sessionId in metadata
     await QdrantVectorStore.fromDocuments(splits, embeddings, vectorStoreConfig);
   }
-  
   return { success: true, chunks: splits.length };
 }
 
@@ -75,14 +77,7 @@ export async function askQuestion(query: string, sessionId: string) {
     embeddings,
     {
       ...vectorStoreConfig,
-      filter: {
-        must: [
-          {
-            key: "metadata.sessionId",
-            match: { value: sessionId }
-          }
-        ]
-      }
+      filter: { must: [{ key: "metadata.sessionId", match: { value: sessionId } }] }
     }
   );
 
@@ -93,16 +88,39 @@ export async function askQuestion(query: string, sessionId: string) {
   Use the following pieces of retrieved context to answer the question.
   STRICT RULE: ONLY answer based on the provided context. If the answer is not in the context, say "I'm sorry, I couldn't find that information in the uploaded document."
   Do NOT use your general knowledge.
-
   Context: ${context}`;
 
-  const response = await model.invoke([
-    ["system", systemPrompt],
-    ["human", query]
-  ]);
+  let answer;
+  let modelUsed = "Gemini 2.0 Flash";
+
+  try {
+    const response = await primaryModel.invoke([
+      ["system", systemPrompt],
+      ["human", query]
+    ]);
+    answer = response.content;
+  } catch (error: any) {
+    console.error("Primary model failed, attempting fallback...", error.message);
+    
+    if (fallbackModel && (error.message.includes("429") || error.message.includes("quota"))) {
+      try {
+        const response = await fallbackModel.invoke([
+          ["system", systemPrompt],
+          ["human", query]
+        ]);
+        answer = response.content;
+        modelUsed = "Groq (Llama 3.3)";
+      } catch (fallbackError: any) {
+        throw new Error(`Orchestra Failure: Both Primary and Fallback failed. Primary Error: ${error.message}`);
+      }
+    } else {
+      throw error;
+    }
+  }
 
   return {
-    answer: response.content,
+    answer,
+    modelUsed,
     sources: results.map((doc: any) => ({
       content: doc.pageContent,
       metadata: doc.metadata,
