@@ -406,3 +406,43 @@ body {
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.brain-status {
+  font-size: 0.65rem;
+  font-weight: 600;
+  margin-top: 0.3rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: color 0.3s ease;
+}
+
+.brain-status.online {
+  color: #34a853;
+}
+
+.brain-status.offline {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.delete-btn {
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  z-index: 20;
+}
+
+.delete-btn:hover {
+  background: #ea4335;
+  color: white;
+  transform: scale(1.1);
+}

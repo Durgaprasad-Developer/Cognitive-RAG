@@ -183,9 +183,25 @@ export default function NotebookLM() {
     }
   };
 
+  const [isBrainOnline, setIsBrainOnline] = useState(false);
+  useEffect(() => {
+    const checkBrain = async () => {
+      try {
+        const res = await fetch("http://localhost:8000/health", { signal: AbortSignal.timeout(2000) });
+        setIsBrainOnline(res.ok);
+      } catch (e) {
+        setIsBrainOnline(false);
+      }
+    };
+    const interval = setInterval(checkBrain, 5000);
+    checkBrain();
+    return () => clearInterval(interval);
+  }, []);
+
   const deleteSession = (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
-    if (confirm("Delete this chat?")) {
+    if (confirm("Delete this chat and all indexed context?")) {
       setSessions((prev) => prev.filter((s) => s.id !== id));
       if (activeSessionId === id) setActiveSessionId(null);
     }
@@ -195,7 +211,12 @@ export default function NotebookLM() {
     <div className="container">
       <div className="sidebar glass">
         <div className="sidebar-header">
-          <h1 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Cognitive RAG</h1>
+          <div>
+            <h1 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Cognitive RAG</h1>
+            <div className={`brain-status ${isBrainOnline ? 'online' : 'offline'}`}>
+              {isBrainOnline ? '● Adaptive Brain Online' : '○ Standard Mode (Warming up...)'}
+            </div>
+          </div>
           <button className="theme-toggle" onClick={toggleTheme}>
             {theme === "dark" ? "☀️" : "🌙"}
           </button>
