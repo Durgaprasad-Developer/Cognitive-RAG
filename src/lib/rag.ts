@@ -1,7 +1,7 @@
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { QdrantVectorStore } from "@langchain/qdrant";
-import pdf from "pdf-parse";
+import { PDFParse } from "pdf-parse";
 
 const embeddings = new GoogleGenerativeAIEmbeddings({
   model: "gemini-embedding-001",
@@ -22,15 +22,13 @@ const vectorStoreConfig = {
 async function clearCollection() {
   const url = `${vectorStoreConfig.url}/collections/${vectorStoreConfig.collectionName}`;
   try {
-    // Delete if exists
     await fetch(url, { method: "DELETE" });
-    // Recreate
     await fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         vectors: {
-          size: 768, // gemini-embedding-001 size
+          size: 3072,
           distance: "Cosine",
         },
       }),
@@ -41,28 +39,26 @@ async function clearCollection() {
 }
 
 export async function processFile(file: Blob, fileName: string) {
-  // 1. Clear previous data
   await clearCollection();
 
-  // 2. Load document
   let docs;
   if (fileName.endsWith(".pdf")) {
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const data = await pdf(buffer);
-    docs = [{ pageContent: data.text, metadata: { source: fileName } }];
+    const arrayBuffer = await file.arrayBuffer();
+    const parser = new PDFParse({ data: arrayBuffer });
+    const result = await parser.getText();
+    docs = [{ pageContent: result.text, metadata: { source: fileName } }];
+    await parser.destroy();
   } else {
     const text = await file.text();
     docs = [{ pageContent: text, metadata: { source: fileName } }];
   }
 
-  // 3. Chunking
   const textSplitter = new RecursiveCharacterTextSplitter({
     chunkSize: 1000,
     chunkOverlap: 200,
   });
   const splits = await textSplitter.splitDocuments(docs);
 
-  // 4. Embedding & Indexing
   await QdrantVectorStore.fromDocuments(splits, embeddings, vectorStoreConfig);
   
   return { success: true, chunks: splits.length };
@@ -81,7 +77,6 @@ export async function askQuestion(query: string) {
   Use the following pieces of retrieved context to answer the question.
   STRICT RULE: ONLY answer based on the provided context. If the answer is not in the context, say "I'm sorry, I couldn't find that information in the uploaded document."
   Do NOT use your general knowledge.
-  Identify specifically where in the document the information comes from if possible.
 
   Context: ${context}`;
 
