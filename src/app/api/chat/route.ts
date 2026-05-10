@@ -12,9 +12,9 @@ export async function POST(req: NextRequest) {
     const result = await askQuestion(query, sessionId);
     return NextResponse.json(result);
   } catch (error: any) {
-    console.error("Chat error:", error);
-    // Extract a clean message
-    const message = error.message || "An unexpected error occurred";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Chat API Error:", error);
+    // Extract a more descriptive error message for the UI
+    const errorDetail = error.message || "Unknown server error";
+    return NextResponse.json({ error: `Backend Error: ${errorDetail}` }, { status: 500 });
   }
 }

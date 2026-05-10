@@ -50,47 +50,72 @@ export async function processFile(file: Blob, fileName: string, sessionId: strin
   }
   const textSplitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 200 });
   const splits = await textSplitter.splitDocuments(docs);
+  
   if (splits.length > 0) {
     await QdrantVectorStore.fromDocuments(splits, embeddings, vectorStoreConfig);
+    
+    // Verification: Wait for Qdrant to confirm indexing
+    let retries = 5;
+    while (retries > 0) {
+      const vs = await QdrantVectorStore.fromExistingCollection(embeddings, vectorStoreConfig);
+      const test = await vs.similaritySearch("test", 1, {
+        must: [{ key: "metadata.sessionId", match: { value: sessionId } }]
+      });
+      if (test.length > 0) break;
+      await new Promise(r => setTimeout(r, 2000));
+      retries--;
+    }
   }
+  
   return { success: true, chunks: splits.length };
 }
 
 export async function askQuestion(query: string, sessionId: string) {
-  const vectorStore = await QdrantVectorStore.fromExistingCollection(
-    embeddings,
-    vectorStoreConfig
-  );
+  try {
+    const vectorStore = await QdrantVectorStore.fromExistingCollection(
+      embeddings,
+      vectorStoreConfig
+    );
 
-  // Correct way to filter by sessionId in Qdrant similarity search
-  const results = await vectorStore.similaritySearch(query, 5, {
-    must: [
-      {
-        key: "metadata.sessionId",
-        match: {
-          value: sessionId,
+    const results = await vectorStore.similaritySearch(query, 5, {
+      must: [
+        {
+          key: "metadata.sessionId",
+          match: {
+            value: sessionId,
+          },
         },
-      },
-    ],
-  });
+      ],
+    });
 
-  const context = results.map(r => r.pageContent).join("\n\n");
+    if (results.length === 0) {
+      return {
+        answer: "I'm sorry, I couldn't find any relevant information for this session. Please make sure the document was indexed correctly.",
+        modelUsed: "System",
+        sources: []
+      };
+    }
 
-  const systemPrompt = `You are an AI assistant helping a user with their document.
-  Use the following pieces of retrieved context to answer the question.
-  STRICT RULE: ONLY answer based on the provided context. If the answer is not in the context, say "I'm sorry, I couldn't find that information in the uploaded document."
-  Do NOT use your general knowledge.
-  Context: ${context}`;
+    const context = results.map(r => r.pageContent).join("\n\n");
 
-  // Orchestrated Generation with Fallbacks
-  const response = await orchestrator.generateWithFallback(systemPrompt, query);
+    const systemPrompt = `You are an AI assistant helping a user with their document.
+    Use the following pieces of retrieved context to answer the question.
+    STRICT RULE: ONLY answer based on the provided context. If the answer is not in the context, say "I'm sorry, I couldn't find that information in the uploaded document."
+    Do NOT use your general knowledge.
+    Context: ${context}`;
 
-  return {
-    answer: response.content,
-    modelUsed: response.modelUsed,
-    sources: results.map((doc: any) => ({
-      content: doc.pageContent,
-      metadata: doc.metadata,
-    })),
-  };
+    const response = await orchestrator.generateWithFallback(systemPrompt, query);
+
+    return {
+      answer: response.content,
+      modelUsed: response.modelUsed,
+      sources: results.map((doc: any) => ({
+        content: doc.pageContent,
+        metadata: doc.metadata,
+      })),
+    };
+  } catch (error: any) {
+    console.error("RAG Error:", error);
+    throw new Error(`RAG Error: ${error.message}`);
+  }
 }
