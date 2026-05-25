@@ -30,7 +30,7 @@ graph TD
     %% User and Web layer
     User([👤 End User]) -->|Uploads PDF / Sends Query| Next[🎨 Next.js 16 Web UI]
     
-    subgraph Next.js API Routes (Node.js)
+    subgraph NextJS ["Next.js API Routes (Node.js)"]
         Next -->|/api/upload| UploadRoute[Ingestion & Vectorizer]
         Next -->|/api/chat| ChatRoute[RAG Coordinator]
         ChatRoute -->|1. Decide Strategy| FastAPI_RL[/agent/decide]
@@ -39,7 +39,7 @@ graph TD
         ChatRoute -->|4. Verify| FastAPI_Meta[/metacog/evaluate]
     end
 
-    subgraph FastAPI ML Service (Python)
+    subgraph FastAPI ["FastAPI ML Service (Python)"]
         FastAPI_RL --> PPO_Agent[🧠 trained PPO Agent]
         PPO_Agent --> RetrievalEnv[Gymnasium RetrievalEnv]
         FastAPI_Search --> Q_Intel[transformers seq2seq & classifier]
