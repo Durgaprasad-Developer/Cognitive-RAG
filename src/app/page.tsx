@@ -4,12 +4,14 @@ import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import "./globals.css";
 
-type Message = {
+interface Message {
   role: "user" | "ai";
   content: string;
-  sources?: any[];
+  sources?: { content: string; metadata: any }[];
+  strategyUsed?: string;
+  grounded?: boolean;
   modelUsed?: string;
-};
+}
 
 type Session = {
   id: string;
@@ -183,11 +185,35 @@ export default function NotebookLM() {
     }
   };
 
+  const [isBrainOnline, setIsBrainOnline] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkBrain = async () => {
+      const url = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || "http://localhost:8000";
+      try {
+        const res = await fetch(`${url}/health`, { signal: AbortSignal.timeout(2000) });
+        setIsBrainOnline(res.ok);
+      } catch (e) {
+        setIsBrainOnline(false);
+      }
+    };
+    const interval = setInterval(checkBrain, 5000);
+    checkBrain();
+    return () => clearInterval(interval);
+  }, []);
+
   const deleteSession = (id: string, e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
-    if (confirm("Delete this chat?")) {
-      setSessions((prev) => prev.filter((s) => s.id !== id));
-      if (activeSessionId === id) setActiveSessionId(null);
+    setShowDeleteModal(id);
+  };
+
+  const confirmDelete = () => {
+    if (showDeleteModal) {
+      setSessions((prev) => prev.filter((s) => s.id !== showDeleteModal));
+      if (activeSessionId === showDeleteModal) setActiveSessionId(null);
+      setShowDeleteModal(null);
     }
   };
 
@@ -195,7 +221,12 @@ export default function NotebookLM() {
     <div className="container">
       <div className="sidebar glass">
         <div className="sidebar-header">
-          <h1 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Cognitive RAG</h1>
+          <div>
+            <h1 style={{ fontSize: "1.2rem", fontWeight: 700 }}>Cognitive RAG</h1>
+            <div className={`brain-status ${isBrainOnline ? 'online' : 'offline'}`}>
+              {isBrainOnline ? '● Adaptive Brain Online' : '○ Standard Mode (Warming up...)'}
+            </div>
+          </div>
           <button className="theme-toggle" onClick={toggleTheme}>
             {theme === "dark" ? "☀️" : "🌙"}
           </button>
@@ -264,9 +295,11 @@ export default function NotebookLM() {
                     <div className="prose">
                       <ReactMarkdown>{m.content}</ReactMarkdown>
                     </div>
-                    {m.modelUsed && (
-                      <div className="model-badge">
-                        <span>Answered by</span> {m.modelUsed}
+                    {m.role === "ai" && m.content.length > 0 && (
+                      <div className="msg-meta">
+                        <span className="strategy-badge">🧠 {m.strategyUsed || "Adaptive Retrieval"}</span>
+                        {m.grounded === false && <span className="warning-badge">⚠️ Potential Hallucination</span>}
+                        {m.modelUsed && <span className="model-badge">{m.modelUsed}</span>}
                       </div>
                     )}
                   </div>
@@ -300,6 +333,19 @@ export default function NotebookLM() {
           </form>
         </div>
       </main>
+
+      {showDeleteModal && (
+        <div className="modal-overlay" onClick={() => setShowDeleteModal(null)}>
+          <div className="modal-content glass" onClick={(e) => e.stopPropagation()}>
+            <h3>Delete Session?</h3>
+            <p>This will permanently remove this conversation and its indexed context.</p>
+            <div className="modal-actions">
+              <button className="cancel-btn" onClick={() => setShowDeleteModal(null)}>Cancel</button>
+              <button className="confirm-btn" onClick={confirmDelete}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

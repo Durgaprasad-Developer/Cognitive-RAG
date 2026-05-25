@@ -2,6 +2,8 @@ import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { QdrantVectorStore } from "@langchain/qdrant";
 import { orchestrator } from "./llm/orchestrator";
+import { HybridRetriever } from "../retrieval/hybrid";
+import { verifyGrounding } from "../verifier/verifier";
 // @ts-ignore
 import pdf from "pdf-extraction";
 
@@ -16,113 +18,107 @@ const vectorStoreConfig = {
   collectionName: process.env.COLLECTION_NAME || "notebook_rag",
 };
 
-async function ensureCollection() {
-  const url = `${vectorStoreConfig.url}/collections/${vectorStoreConfig.collectionName}`;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (process.env.QDRANT_API_KEY) headers["api-key"] = process.env.QDRANT_API_KEY;
-
-  try {
-    const check = await fetch(url, { headers });
-    if (check.status === 404) {
-      await fetch(url, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify({
-          vectors: { size: 768, distance: "Cosine" },
-        }),
-      });
-    }
-  } catch (e: any) {
-    throw new Error(`[STAGE 4: CLOUD_STORE] Qdrant connection failed: ${e.message}`);
-  }
-}
-
 export async function processFile(file: Blob, fileName: string, sessionId: string) {
-  try {
-    await ensureCollection();
-    let docs;
-    try {
-      if (fileName.endsWith(".pdf")) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const data = await pdf(buffer);
-        docs = [{ pageContent: data.text, metadata: { source: fileName, sessionId } }];
-      } else {
-        const text = await file.text();
-        docs = [{ pageContent: text, metadata: { source: fileName, sessionId } }];
-      }
-    } catch (e: any) {
-      throw new Error(`[STAGE 2: PDF_PARSE] Failed to extract text: ${e.message}`);
-    }
-
-    const textSplitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 200 });
-    const splits = await textSplitter.splitDocuments(docs);
-    
-    if (splits.length > 0) {
-      try {
-        await QdrantVectorStore.fromDocuments(splits, embeddings, vectorStoreConfig);
-      } catch (e: any) {
-        throw new Error(`[STAGE 3: EMBEDDING/STORE] Failed to index vectors: ${e.message}`);
-      }
-    }
-    return { success: true, chunks: splits.length };
-  } catch (error: any) {
-    throw error;
+  let docs;
+  if (fileName.endsWith(".pdf")) {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const data = await pdf(buffer);
+    docs = [{ pageContent: data.text, metadata: { source: fileName, sessionId } }];
+  } else {
+    const text = await file.text();
+    docs = [{ pageContent: text, metadata: { source: fileName, sessionId } }];
   }
+  const textSplitter = new RecursiveCharacterTextSplitter({ chunkSize: 1000, chunkOverlap: 200 });
+  const splits = await textSplitter.splitDocuments(docs);
+  
+  if (splits.length > 0) {
+    await QdrantVectorStore.fromDocuments(splits, embeddings, vectorStoreConfig);
+    
+    // Index in BM25 (Python Service) - Safe call
+    try {
+      const url = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || "http://localhost:8000";
+      await fetch(`${url}/index`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ documents: splits.map(s => s.pageContent) }),
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch (e) {
+      console.warn("⚠️ BM25 Indexing skipped: Service offline or booting.");
+    }
+  }
+  return { success: true, chunks: splits.length };
 }
 
 export async function askQuestion(query: string, sessionId: string) {
+  const vectorStore = await QdrantVectorStore.fromExistingCollection(
+    embeddings,
+    vectorStoreConfig
+  );
+
+  // 1. Safe RL Agent Strategy Selection
+  let strategy = "Vector (Safety Fallback)";
   try {
-    const vectorStore = await QdrantVectorStore.fromExistingCollection(
-      embeddings,
-      vectorStoreConfig
-    );
-
-    let results = [];
-    
-    // Strategy A: Try Nested Filter (Standard LangChain)
-    try {
-      results = await vectorStore.similaritySearch(query, 5, {
-        must: [{ key: "metadata.sessionId", match: { value: sessionId } }]
-      });
-    } catch (e) {
-      console.log("Strategy A failed, trying Strategy B...");
-      // Strategy B: Try Flattened Filter
-      try {
-        results = await vectorStore.similaritySearch(query, 5, {
-          must: [{ key: "sessionId", match: { value: sessionId } }]
-        });
-      } catch (e2) {
-        console.log("Strategy B failed, trying Strategy C (No Filter)...");
-        // Strategy C: Last resort - search everything (better than an error)
-        results = await vectorStore.similaritySearch(query, 5);
-      }
+    const url = process.env.NEXT_PUBLIC_PYTHON_SERVICE_URL || "http://localhost:8000";
+    const agentRes = await fetch(`${url}/agent/decide`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query }),
+      signal: AbortSignal.timeout(2000),
+    });
+    if (agentRes.ok) {
+      const agentData = await agentRes.json();
+      strategy = agentData.strategy || strategy;
     }
-
-    if (results.length === 0) {
-      return {
-        answer: "I'm sorry, I couldn't find any relevant information. Please try re-uploading.",
-        modelUsed: "System",
-        sources: []
-      };
-    }
-
-    const context = results.map(r => r.pageContent).join("\n\n");
-    const systemPrompt = `Use the following context to answer: ${context}`;
-
-    try {
-      const response = await orchestrator.generateWithFallback(systemPrompt, query);
-      return {
-        answer: response.content,
-        modelUsed: response.modelUsed,
-        sources: results.map((doc: any) => ({
-          content: doc.pageContent,
-          metadata: doc.metadata,
-        })),
-      };
-    } catch (e: any) {
-      throw new Error(`[STAGE 6: AI_ORCHESTRA] ${e.message}`);
-    }
-  } catch (error: any) {
-    throw new Error(`RAG Error: ${error.message}`);
+  } catch (e) {
+    console.warn("⚠️ RL Agent offline. Using safety fallback strategy.");
   }
+
+  // 2. Adaptive Retrieval (Internally handles safety)
+  const retriever = new HybridRetriever(vectorStore);
+  let topChunks = await retriever.search(query, sessionId);
+
+  // Broader search fallback if no results
+  if (!topChunks || topChunks.length === 0) {
+    console.warn("🔍 [DIAGNOSTIC] Strict search returned 0 results. Trying broader search...");
+    topChunks = await vectorStore.similaritySearch(query, 5); // Unfiltered search
+  }
+
+  if (!topChunks || topChunks.length === 0) {
+    console.error("❌ [DIAGNOSTIC] Retrieval failed: No chunks found in Qdrant collection.");
+    throw new Error("I couldn't find any relevant information in your document. Please ensure the document was indexed correctly.");
+  }
+
+  const context = topChunks.map((c: any) => c.content).join("\n\n");
+
+  const systemPrompt = `You are an Adaptive Cognitive Assistant.
+  Answer the user's question using the high-accuracy context below.
+  
+  Context: ${context}`;
+
+  // 3. Generation
+  const response = await orchestrator.generateWithFallback(systemPrompt, query);
+
+  // 4. Safe Hallucination Verification
+  let grounded = true;
+  let reason = "Verification skipped (Service offline)";
+  try {
+    const verification = await verifyGrounding(response.content, context);
+    grounded = verification.grounded;
+    reason = verification.reason;
+  } catch (e) {
+    console.warn("⚠️ Verification skipped due to service error.");
+  }
+
+  return {
+    answer: response.content,
+    modelUsed: response.modelUsed,
+    grounded,
+    verificationReason: reason,
+    strategyUsed: strategy,
+    sources: topChunks.map((c: any) => ({
+      content: c.content,
+      score: c.score || 0
+    })),
+  };
 }
