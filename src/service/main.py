@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 import torch
 from sentence_transformers import CrossEncoder
 from rank_bm25 import BM25Okapi

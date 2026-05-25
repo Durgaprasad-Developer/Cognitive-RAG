@@ -1,6 +1,8 @@
 from rank_bm25 import BM25Okapi
 import nltk
+import numpy as np
 from typing import List
+
 
 class BM25Searcher:
     def __init__(self):
